@@ -5,7 +5,7 @@ research on large language models. No patient data, no external dependency
 (Python 3.10+ standard library only).
 
 > **Status**: plumbing, plan, classification engine and checks are tested
-> (109 tests, run in CI). The real call goes through the `opencode` CLI (see
+> (123 tests, run in CI). The real call goes through the `opencode` CLI (see
 > "Connecting opencode"); it could not be validated in the development
 > environment. Only `backend: http_api` remains a placeholder.
 
@@ -127,7 +127,8 @@ cadrads-generator/            (repository root)
 │   └── incidental_findings.json   catalogue of incidental findings
 ├── src/
 │   ├── config.py          loading + validation of settings.json
-│   ├── planner.py         stratified draw and clinical scenarios
+│   ├── scenarios.py       one explicit tree per CAD-RADS category
+│   ├── planner.py         orchestration of the steps, calcium, devices
 │   ├── classify.py        deterministic computation of the CAD-RADS label
 │   ├── incidental.py      draw of the incidental findings
 │   ├── prompt.py          prompt rendering
@@ -135,7 +136,7 @@ cadrads-generator/            (repository root)
 │   ├── auth.py            opencode connection + call probe
 │   ├── validate.py        cleaning and automatic checks
 │   └── store.py           manifest, resume, export
-└── tests/                 109 tests, stdlib only
+└── tests/                 123 tests, stdlib only
 ```
 
 The files in `src/` are not meant to be edited by hand: all tuning happens through
@@ -183,7 +184,16 @@ the lesions. That label is then **imposed** on the LLM in the prompt ("Reproduce
 this classification verbatim"). Consequence: the label and the lesions in the
 prompt cannot be inconsistent.
 
-Rules applied, in order of precedence (on the most severe stenosis):
+**Every lesion carries its own grade.** `lesion_category()` grades one lesion from
+its stenosis alone (1-24 %, 25-49 %, 50-69 %, 70-99 %, 100 %), and the patient
+category is the **highest** of them. Category 4 is then split at patient level: a
+left main stenosis ≥ 50 % or three vessels ≥ 70 % make it 4B, otherwise 4A. A
+non-diagnostic segment with no stenosis ≥ 50 % makes the study `N`.
+
+The per-lesion grades are kept in the plan (`per_lesion`) and in the manifest, so a
+report can be traced back to the lesions that produced its label.
+
+The previous formulation, in order of precedence on the most severe stenosis:
 
 | # | Condition | Category |
 |---|---|---|
@@ -475,6 +485,16 @@ The rates are aggregated in `summary.json`.
 These checks are **lexical**. A report can pass all of them and remain clinically
 incoherent: that is precisely the role of the expert readers.
 
+### One tree per category
+
+`src/scenarios.py` holds one explicit block per final category, each stating which
+lesion sets the category, which lesions may be associated (and in which vessel), and
+which modifiers are compatible. The duplication between blocks is deliberate: it
+keeps each category readable on its own instead of hiding the compatibility rules in
+shared helpers. `tests/test_scenarios.py` asserts that each tree produces its own
+category, 200 draws per category, and that no block breaks its own rules (no left
+main in a CAD-RADS 1-3 case, no graft below a surgical stenosis, and so on).
+
 ### The plan itself is checked by invariants
 
 The scenario generator avoids contradictions **by construction**, not by filtering
@@ -497,7 +517,8 @@ python3 tests/test_validate.py     # 16 tests  — cleaning and checks
 python3 tests/test_auth.py         # 10 tests  — connection state, failure path, fast-fail
 python3 tests/test_cli.py          # 14 tests  — flags, exclusivity, export, picker, reload
 python3 tests/test_config.py       #  8 tests  — model rewrite, indication values
-python3 tests/test_plan_invariants.py  # 26 tests  — "X impossible when Y" over 2000 cases
+python3 tests/test_plan_invariants.py  # 30 tests  — "X impossible when Y" over 2000 cases
+python3 tests/test_scenarios.py    # 10 tests  — each category tree produces its category
 ```
 
 They cover: stenosis thresholds, occlusion, left main, three vessels, `5 > 4B`
@@ -506,7 +527,7 @@ label format; prevalences matching the catalogue, `age_min` / `sex` gating, cap,
 exclusion, determinism; preamble and code-block cleaning, label tolerance, mentions
 of modifiers and findings; connection state and its failure path.
 
-109 tests, standard library only. They also run in continuous integration
+123 tests, standard library only. They also run in continuous integration
 (`.github/workflows/tests.yml`, Python 3.10 to 3.14): that is the proof that the
 imposed label follows the rules and that the draw is reproducible.
 

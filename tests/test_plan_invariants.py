@@ -152,6 +152,41 @@ class PlanInvariants(unittest.TestCase):
                               f"{case['case_id']}: {case['plaque_burden']} on one vessel")
 
     # -- label -------------------------------------------------------------
+    def test_every_lesion_stays_at_or_below_the_final_category(self):
+        """The patient category is the highest lesion, so no lesion may exceed it."""
+        for case in self.cases:
+            if not case["per_lesion"]:
+                self.assertEqual(case["cadrads"], "0")
+                continue
+            label = case["cadrads"]
+            final = 4 if label in ("4A", "4B") else classify.LESION_ORDER[label]
+            for lesion in case["per_lesion"]:
+                self.assertLessEqual(classify.LESION_ORDER[lesion["cadrads"]], final,
+                                     f"{case['case_id']}: lesion above the final category")
+
+    def test_4a_has_no_left_main_and_no_three_vessel_disease(self):
+        for case in self.cases:
+            if case["cadrads"] != "4A":
+                continue
+            self.assertFalse(any(l["vessel"] == "LM" and l["stenosis_pct"] >= 50 for l in case["lesions"]),
+                             f"{case['case_id']}: 4A with a significant left main")
+            severe = {l["vessel"] for l in case["lesions"] if l["stenosis_pct"] >= 70}
+            self.assertLessEqual(len(severe), 2, f"{case['case_id']}: 4A with three vessels >= 70%")
+
+    def test_4b_has_left_main_or_three_vessels(self):
+        for case in self.cases:
+            if case["cadrads"] != "4B":
+                continue
+            left_main = any(l["vessel"] == "LM" and l["stenosis_pct"] >= 50 for l in case["lesions"])
+            three = len({l["vessel"] for l in case["lesions"] if l["stenosis_pct"] >= 70}) >= 3
+            self.assertTrue(left_main or three, f"{case['case_id']}: 4B without left main or 3 vessels")
+
+    def test_5_has_a_total_occlusion(self):
+        for case in self.cases:
+            if case["cadrads"] == "5":
+                self.assertTrue(any(l["stenosis_pct"] >= 100 for l in case["lesions"]),
+                                f"{case['case_id']}: 5 without an occlusion")
+
     def test_label_recomputes_from_the_lesions(self):
         for case in self.cases:
             again = classify.classify(case["lesions"], case["declared_modifiers"],

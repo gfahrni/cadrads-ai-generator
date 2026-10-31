@@ -1,100 +1,118 @@
 """CAD-RADS 2.0 classification engine — deterministic computation.
 
-The final label is NEVER produced by the LLM. It is computed here from the
-lesions, then imposed on the model in the prompt. Consequence: the label and
-the lesions described in the prompt cannot be inconsistent.
+The label is computed from the lesions, then imposed on the model in the prompt.
+Rule of the engine, in one sentence:
+
+    every lesion carries its own CAD-RADS, the patient category is the HIGHEST of
+    them, and category 4 is split into 4A/4B at patient level by left main
+    involvement or three-vessel disease.
 
 Reference: Cury RC et al., CAD-RADS 2.0, Radiol Cardiothorac Imaging
 2022;4(5):e220183. doi:10.1148/ryct.220183
-
-Precedence applied (per patient, on the most severe stenosis):
-
-    1. non-diagnostic segment and no stenosis >= 50 %    -> N
-    2. total occlusion (100 %)                           -> 5
-    3. left main >= 50 % or 3 vessels >= 70 %            -> 4B
-    4. >= 70 % (1 or 2 vessels)                          -> 4A
-    5. 50-69 %                                           -> 3
-    6. 25-49 %                                           -> 2
-    7. 1-24 %                                            -> 1
-    8. no plaque                                         -> 0
 """
 from __future__ import annotations
 
 THREE_VESSELS = ("LAD", "LCX", "RCA")
 MODIFIER_ORDER = ("N", "S", "G", "E", "V")
 
-# Plaque burden is a measure of EXTENT, not of category severity: the consensus
-# does not tie P to the CAD-RADS category, and a single occlusion is a small total
-# plaque burden. Deriving P from the number of diseased vessels removes the
-# overreach ("P3 severe burden" resting on one 32% plaque) and makes the value a
-# pure function of the lesions.
+# Ordering used to take the maximum. "N" is handled separately: it is not a
+# stenosis grade but the impossibility of grading.
+LESION_ORDER = {"0": 0, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5}
+
 BURDEN_BY_EXTENT = {0: None, 1: "P1", 2: "P2", 3: "P3"}
 
 
-def plaque_burden_for(lesions) -> str | None:
+# --------------------------------------------------------------------------
+# Per-lesion grading
+# --------------------------------------------------------------------------
+def lesion_category(stenosis_pct: int) -> str:
+    """CAD-RADS grade of ONE lesion, from its stenosis alone.
+
+    1 : 1-24 %      2 : 25-49 %      3 : 50-69 %
+    4 : 70-99 %     5 : 100 % (total occlusion)
+    0 : no stenosis
+    The 4A/4B split does not exist at lesion level: it is a patient-level rule.
+    """
+    if stenosis_pct >= 100:
+        return "5"
+    if stenosis_pct >= 70:
+        return "4"
+    if stenosis_pct >= 50:
+        return "3"
+    if stenosis_pct >= 25:
+        return "2"
+    if stenosis_pct >= 1:
+        return "1"
+    return "0"
+
+
+def grade_lesions(lesions) -> list:
+    """[(lesion, category), ...] — the per-lesion CAD-RADS, for the trace."""
+    return [(lesion, lesion_category(int(lesion["stenosis_pct"]))) for lesion in lesions]
+
+
+# --------------------------------------------------------------------------
+# Patient category
+# --------------------------------------------------------------------------
+def classify_category(lesions, non_evaluable=()) -> tuple:
+    """Patient category plus a justification trace.
+
+    The category is the highest lesion grade, except:
+      - a non-diagnostic segment with nothing >= 50 % makes the study unclassifiable (N);
+      - a left main stenosis >= 50 % forces 4B, whatever its own grade;
+      - three vessels >= 70 % forces 4B.
+    """
+    graded = grade_lesions(lesions)
+    trace = [f"{l['vessel']} {l['segment']}: {l['stenosis_pct']}% -> lesion CAD-RADS {c}"
+             for l, c in graded]
+
+    highest = max((c for _, c in graded), default="0", key=lambda c: LESION_ORDER[c])
+    trace.append(f"highest lesion grade = {highest}")
+
+    # A study that cannot rule out obstructive disease is not classifiable.
+    if non_evaluable and LESION_ORDER[highest] < 3:
+        trace.append("non-diagnostic segment with no stenosis >= 50% -> N")
+        return "N", trace
+
+    left_main = [l for l in lesions if l["vessel"] == "LM" and int(l["stenosis_pct"]) >= 50]
+    three_vessel = len({l["vessel"] for l in lesions
+                        if l["vessel"] in THREE_VESSELS and int(l["stenosis_pct"]) >= 70}) >= 3
+
+    # Total occlusion wins over everything.
+    if highest == "5":
+        trace.append("total occlusion -> 5")
+        return "5", trace
+
+    # Left main >= 50 % is the special case the consensus singles out.
+    if left_main:
+        trace.append("left main >= 50% -> 4B")
+        return "4B", trace
+
+    if highest == "4":
+        if three_vessel:
+            trace.append("three vessels >= 70% -> 4B")
+            return "4B", trace
+        trace.append(">= 70% without left main or three-vessel disease -> 4A")
+        return "4A", trace
+
+    trace.append(f"category = highest lesion grade = {highest}")
+    return highest, trace
+
+
+# --------------------------------------------------------------------------
+# Plaque burden, modifiers, label
+# --------------------------------------------------------------------------
+def plaque_burden_for(lesions):
     """P value implied by the extent of the disease (number of diseased vessels).
 
     P4 (extensive) needs four or more diseased vessels; the scenario models at most
-    three, so P4 does not occur. That is documented rather than faked.
+    four, so P4 stays exceptional. That is documented rather than faked.
     """
     n_vessels = len({l["vessel"] for l in lesions if int(l["stenosis_pct"]) > 0})
-    return BURDEN_BY_EXTENT.get(min(n_vessels, 3), None)
-
-
-def _max_per_vessel(lesions) -> dict:
-    per_vessel: dict[str, int] = {}
-    for lesion in lesions:
-        vessel = lesion["vessel"]
-        stenosis = int(lesion["stenosis_pct"])
-        per_vessel[vessel] = max(per_vessel.get(vessel, 0), stenosis)
-    return per_vessel
-
-
-def classify_category(lesions, non_evaluable=()) -> tuple[str, list]:
-    """CAD-RADS category plus a justification trace (for audit and for the paper)."""
-    per_vessel = _max_per_vessel(lesions)
-    max_stenosis = max(per_vessel.values(), default=0)
-    severe_vessels = [v for v in THREE_VESSELS if per_vessel.get(v, 0) >= 70]
-    left_main = per_vessel.get("LM", 0)
-
-    trace = [f"max stenosis = {max_stenosis}%"]
-    if left_main:
-        trace.append(f"left main = {left_main}%")
-    trace.append(f"vessels >= 70% = {len(severe_vessels)} {severe_vessels}")
-    if non_evaluable:
-        trace.append(f"non-diagnostic segments = {list(non_evaluable)}")
-
-    if non_evaluable and max_stenosis < 50:
-        trace.append("rule 1: non-diagnostic with no stenosis >= 50% -> N")
-        return "N", trace
-    if max_stenosis >= 100:
-        trace.append("rule 2: total occlusion -> 5")
-        return "5", trace
-    if left_main >= 50 or len(severe_vessels) >= 3:
-        trace.append("rule 3: left main >= 50% or 3 vessels >= 70% -> 4B")
-        return "4B", trace
-    if max_stenosis >= 70:
-        trace.append("rule 4: stenosis >= 70% -> 4A")
-        return "4A", trace
-    if max_stenosis >= 50:
-        trace.append("rule 5: stenosis 50-69% -> 3")
-        return "3", trace
-    if max_stenosis >= 25:
-        trace.append("rule 6: stenosis 25-49% -> 2")
-        return "2", trace
-    if max_stenosis >= 1:
-        trace.append("rule 7: stenosis 1-24% -> 1")
-        return "1", trace
-
-    trace.append("rule 8: no plaque -> 0")
-    return "0", trace
+    return BURDEN_BY_EXTENT.get(min(n_vessels, 3), "P3")
 
 
 def plaque_burden_choices(category: str, lesions) -> list:
-    """Single-element list with the P value implied by the extent.
-
-    Kept as a list so the caller code stays unchanged; there is no choice left.
-    """
     value = plaque_burden_for(lesions)
     return [value] if value else []
 
@@ -104,7 +122,7 @@ def filter_modifiers(modifiers, category: str, non_evaluable=()) -> list:
 
     - N is derived from the presence of a non-diagnostic segment (single source of
       truth), and does not apply when the category IS N.
-    - S, G and V imply atherosclerosis: impossible in CAD-RADS 0.
+    - S, G, V imply atherosclerosis: impossible in CAD-RADS 0.
     """
     kept = []
     for modifier in MODIFIER_ORDER:
@@ -134,7 +152,7 @@ def classify(lesions, modifiers=(), non_evaluable=(), plaque_burden=None) -> dic
     choices = plaque_burden_choices(category, lesions)
 
     if category == "N":
-        plaque_burden = None  # category N is not accompanied by a P value
+        plaque_burden = None
     elif plaque_burden is None:
         plaque_burden = choices[0] if choices else None
     elif choices and plaque_burden not in choices:
@@ -153,4 +171,7 @@ def classify(lesions, modifiers=(), non_evaluable=(), plaque_burden=None) -> dic
         "modifiers": kept,
         "label": build_label(category, plaque_burden, kept),
         "trace": trace,
+        "per_lesion": [{"vessel": l["vessel"], "segment": l["segment"],
+                        "stenosis_pct": l["stenosis_pct"], "cadrads": c}
+                       for l, c in grade_lesions(lesions)],
     }

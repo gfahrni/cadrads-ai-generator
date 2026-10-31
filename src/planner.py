@@ -1,25 +1,24 @@
 """Building the generation plan.
 
-Three responsibilities:
-1. Draw the cases reproducibly (seed) and stratified by target category.
-2. Turn each case into a complete, consistent CLINICAL SCENARIO.
-3. Have the CAD-RADS label COMPUTED by src/classify.py from the lesions.
+The planner orchestrates, it does not decide the clinical content: the lesions and
+the modifiers of each case come from src/scenarios.py, where one explicit block per
+CAD-RADS category states what can be associated with what.
 
-Contradictions are avoided BY CONSTRUCTION, not filtered afterwards: each attribute
-is drawn inside the space left feasible by the previous ones. The dependency order
-is deliberate and must be preserved:
+What happens here, in this order, and why:
 
-    modifiers  -> constrain the plaque composition (V needs a soft plaque)
-    lesions    -> determine the extent, hence the plaque burden P
-    composition-> determines the calcium score (no calcified plaque, no calcium)
-    stent      -> placed on a segment that carries no significant stenosis
-    graft      -> placed in a territory that actually has disease
+  1. draw the target category, then ask the scenario tree for a compatible lesion set;
+  2. add a non-diagnostic segment when N was drawn (on a vessel without a >= 50 %
+     stenosis, otherwise the segment would be medically pointless);
+  3. compute the label with src/classify.py and CHECK it matches the target;
+  4. derive the calcium score from the plaque composition and the patient age, so
+     every point of Agatston has a described plaque behind it;
+  5. place the stent on a segment carrying no lesion, so "patent" is never
+     contradicted by a stenosis in the same segment;
+  6. place the graft into a territory with a surgical stenosis (>= 70 %, >= 50 % for
+     the left main);
+  7. designate the vulnerable plaque (V) and name the abnormality (E).
 
-The label is never left to the LLM's judgement: the target category guides the
-scenario, then the REAL category is recomputed from the lesions. A divergence is
-reported, never silently accepted.
-
-tests/test_plan_invariants.py asserts those rules over a full-sized plan.
+Every step restricts the next one; nothing is generated freely and filtered later.
 """
 from __future__ import annotations
 
@@ -27,14 +26,12 @@ import random
 
 from . import classify as rules
 from . import incidental as incidental_lib
+from . import scenarios
 
 CADRADS_ORDER = ["0", "1", "2", "3", "4A", "4B", "5"]
 
-PLAQUE_TYPES = ["calcified", "mixed", "non-calcified"]
-
-# Calcium contributed by ONE lesion, by composition. The Agatston score is the sum
-# over the lesions, so it is always explainable by what the prompt describes: a
-# purely non-calcified scenario gets no calcium at all.
+# Calcium contributed by ONE lesion, by composition: a purely non-calcified scenario
+# therefore gets no calcium at all, and the score is always explainable.
 CALCIUM_BY_PLAQUE = {
     "calcified": (80, 400),
     "mixed": (30, 150),
@@ -45,6 +42,14 @@ CALCIUM_BY_PLAQUE = {
 # much narrowing, but a score of 400 behind a 5 % stenosis reads as fabricated.
 CALCIUM_SEVERITY_FACTOR = ((25, 0.5), (50, 0.75), (200, 1.0))
 
+# A graft needs a bypassed territory with a surgical stenosis.
+GRAFT_BY_VESSEL = {
+    "LM": "saphenous vein graft to the left main",
+    "LAD": "LIMA to LAD",
+    "LCX": "saphenous vein graft to LCX",
+    "RCA": "RIMA to RCA",
+}
+
 # Concrete non-atherosclerotic abnormalities for modifier E: the model must not have
 # to invent one.
 EXCEPTIONS = [
@@ -54,16 +59,7 @@ EXCEPTIONS = [
     "fusiform aneurysm of the proximal RCA",
 ]
 
-# A graft needs a bypassed territory that actually has disease.
-GRAFT_BY_VESSEL = {
-    "LM": "saphenous vein graft to the left main",
-    "LAD": "LIMA to LAD",
-    "LCX": "saphenous vein graft to LCX",
-    "RCA": "RIMA to RCA",
-}
-
-# Minimal acquisition context, so that the "Technique" section of a structured
-# report does not have to be invented by the model.
+# Minimal acquisition context, so the "Technique" section need not be invented.
 TECHNIQUES = [
     "retrospective ECG-gated acquisition, 120 kV, iodinated contrast",
     "prospective ECG-triggered acquisition, 100 kV, iodinated contrast",
@@ -83,99 +79,6 @@ def allocate(n: int, weights: dict) -> dict:
     return counts
 
 
-def _sample_segment(rng, reference, vessel):
-    return rng.choice(reference["vessels"][vessel])
-
-
-def _lesion(rng, reference, vessel, stenosis_pct):
-    # A chronic total occlusion is calcified or mixed in practice; a purely soft
-    # 100 % occlusion is atypical and reads as synthetic.
-    plaque = rng.choice(["calcified", "mixed"]) if stenosis_pct >= 100 else rng.choice(PLAQUE_TYPES)
-    return {
-        "vessel": vessel,
-        "segment": _sample_segment(rng, reference, vessel),
-        "stenosis_pct": stenosis_pct,
-        "plaque": plaque,
-    }
-
-
-def _lesions_for(rng, reference, cadrads):
-    """Lesion scenario consistent with the target category."""
-    if cadrads == "0":
-        return []
-
-    if cadrads == "1":
-        return [_lesion(rng, reference, rng.choice(["LAD", "LCX", "RCA"]), rng.randint(1, 24))]
-
-    if cadrads == "2":
-        vessels = rng.sample(["LAD", "LCX", "RCA"], k=rng.choice([1, 1, 2]))
-        return [_lesion(rng, reference, v, rng.randint(25, 49)) for v in vessels]
-
-    if cadrads == "3":
-        return [_lesion(rng, reference, rng.choice(["LAD", "LCX", "RCA"]), rng.randint(50, 69))]
-
-    if cadrads == "4A":
-        # 1 or 2 vessels at 70-99 %, no left main, no three-vessel disease.
-        vessels = rng.sample(["LAD", "LCX", "RCA"], k=rng.choice([1, 1, 2]))
-        return [_lesion(rng, reference, v, rng.randint(70, 99)) for v in vessels]
-
-    if cadrads == "4B":
-        # Either left main >= 50 %, or three vessels >= 70 %.
-        if rng.random() < 0.5:
-            return [_lesion(rng, reference, "LM", rng.randint(50, 99)),
-                    _lesion(rng, reference, rng.choice(["LAD", "LCX"]), rng.randint(70, 99))]
-        return [_lesion(rng, reference, v, rng.randint(70, 99)) for v in ("LAD", "LCX", "RCA")]
-
-    # CAD-RADS 5: at least one total occlusion
-    occluded = rng.choice(["LAD", "LCX", "RCA"])
-    lesions = [_lesion(rng, reference, occluded, 100)]
-    if rng.random() < 0.5:
-        other = rng.choice([v for v in ("LAD", "LCX", "RCA") if v != occluded])
-        lesions.append(_lesion(rng, reference, other, rng.randint(1, 69)))
-    return lesions
-
-
-def _ensure_soft_plaque(rng, lesions, why: str, trace: list):
-    """Make at least one lesion non-calcified, when a rule requires it.
-
-    Used for modifier V: a vulnerable plaque is, by definition, a non-calcified
-    plaque with low attenuation. Drawing V on a calcified plaque would force the
-    model to invent a feature the scenario denies.
-    """
-    if not lesions or any(l["plaque"] == "non-calcified" for l in lesions):
-        return
-    victim = rng.choice(lesions)
-    victim["plaque"] = "non-calcified"
-    trace.append(f"{why}: one lesion switched to non-calcified plaque ({victim['vessel']})")
-
-
-def _pick_modifiers(rng, target, weights):
-    """Draw the modifiers.
-
-    - S, G and V imply atherosclerosis: impossible in CAD-RADS 0.
-    - N is excluded for targets 0/1/2: a non-diagnostic segment combined with a
-      stenosis < 50 % reclassifies the case as CAD-RADS N (rule 1 of the engine),
-      which would shift the requested distribution.
-    - G is excluded for targets 0/1/2: a bypass graft needs a stenosis >= 50 % to
-      justify it, which those categories cannot contain.
-    """
-    chosen = []
-    for modifier, weight in weights.items():
-        if weight <= 0:
-            continue
-        if target == "0" and modifier != "E":
-            continue
-        if modifier == "N" and target in ("0", "1", "2"):
-            continue
-        if modifier == "G" and target in ("0", "1", "2", "3"):
-            continue
-        if modifier == "V" and target in ("0", "5"):
-            continue
-        if rng.random() < weight:
-            chosen.append(modifier)
-    return sorted(chosen)
-
-
 def _non_evaluable(rng, reference, lesions):
     """A non-diagnostic segment, on a vessel without a severe lesion."""
     severe = {l["vessel"] for l in lesions if l["stenosis_pct"] >= 50}
@@ -183,15 +86,11 @@ def _non_evaluable(rng, reference, lesions):
     if not candidates:
         return []
     vessel = rng.choice(candidates)
-    return [f"{vessel} {_sample_segment(rng, reference, vessel)}"]
+    return [f"{vessel} {rng.choice(reference['vessels'][vessel])}"]
 
 
 def _free_segment(rng, reference, lesions, non_evaluable):
-    """A vessel/segment carrying neither a lesion nor a non-diagnostic artefact.
-
-    A stent placed here is genuinely patent, with no restenosis to explain: the
-    prompt can say "patent" without contradicting a stenosis in the same segment.
-    """
+    """A vessel/segment carrying neither a lesion nor a non-diagnostic artefact."""
     used = {(l["vessel"], l["segment"]) for l in lesions}
     for entry in non_evaluable:
         parts = entry.split()
@@ -234,7 +133,7 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
     counts = allocate(run["n_reports"], gen["cadrads_weights"])
     order = [c for c in CADRADS_ORDER if counts.get(c, 0) > 0]
 
-    # Interleaved order: avoids blocks of identical cases, and a style drift if the
+    # Interleaved order: avoids blocks of identical cases and a style drift if the
     # model "warms up" over the session.
     queue = []
     for category in order:
@@ -245,7 +144,10 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
     cases = []
 
     for index, target in enumerate(queue, start=1):
-        trace: list = []
+        # 1. lesion set and modifiers, from the tree of this category
+        scenario = scenarios.build(rng, reference, target, cfg)
+        lesions = scenario["lesions"]
+        declared = scenario["modifiers"]
 
         style = gen["style"]
         if style == "random":
@@ -262,33 +164,34 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
         if indication == "random":
             indication = rng.choice(["stable", "acute"])
 
-        # 1. modifiers first: they constrain the plaque composition below
-        declared = _pick_modifiers(rng, target, gen["modifier_weights"])
-
-        # 2. lesions, then the composition constraint imposed by V
-        lesions = _lesions_for(rng, reference, target)
-        if "V" in declared:
-            _ensure_soft_plaque(rng, lesions, "vulnerable plaque", trace)
-
-        # 3. non-diagnostic segment, on a vessel without severe disease
+        # 2. non-diagnostic segment, on a vessel without severe disease
         non_evaluable = _non_evaluable(rng, reference, lesions) if "N" in declared else []
 
-        # 4. category and plaque burden (P is a function of the extent)
-        category, _ = rules.classify_category(lesions, non_evaluable)
-        burden = rules.plaque_burden_for(lesions)
-        classified = rules.classify(lesions, declared, non_evaluable, burden)
-
+        # 3. label, and the drift check against the target
+        classified = rules.classify(lesions, declared, non_evaluable)
         if classified["category"] != target:
             classified["trace"].append(
                 f"WARNING: target category {target} but computed category "
                 f"{classified['category']} — the computed value is kept"
             )
 
-        # 5. calcium explained by the plaque composition
+        # 4. calcium explained by the composition and the age
         agatston = _agatston(rng, lesions, age)
 
-        # 5b. V must designate a plaque, E must name an abnormality: otherwise the
-        # model has to invent the finding the modifier refers to.
+        # 5. stent on a free segment, so "patent" never contradicts a stenosis
+        stent_site = None
+        if "S" in classified["modifiers"]:
+            stent_site = _free_segment(rng, reference, lesions, non_evaluable)
+
+        # 6. graft into a territory with a surgical stenosis
+        graft_site = None
+        if "G" in classified["modifiers"]:
+            surgical = sorted({l["vessel"] for l in lesions
+                               if l["stenosis_pct"] >= (50 if l["vessel"] == "LM" else 70)})
+            if surgical:
+                graft_site = GRAFT_BY_VESSEL.get(rng.choice(surgical))
+
+        # 7. V designates a soft plaque, E names an abnormality
         vulnerable_site = None
         if "V" in classified["modifiers"]:
             soft = [l for l in lesions if l["plaque"] == "non-calcified"]
@@ -296,21 +199,6 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
                 chosen = rng.choice(soft)
                 vulnerable_site = f"{chosen['vessel']} {chosen['segment']}"
         exception_site = rng.choice(EXCEPTIONS) if "E" in classified["modifiers"] else None
-
-        # 6. stent on a free segment, so "patent" never contradicts a stenosis
-        stent_site = None
-        if "S" in classified["modifiers"]:
-            stent_site = _free_segment(rng, reference, lesions, non_evaluable)
-
-        # 7. graft into a territory that has disease
-        graft_site = None
-        if "G" in classified["modifiers"]:
-            # A bypass graft is indicated for a >= 70 % stenosis (>= 50 % for the left
-            # main); a 51 % lesion is not surgical.
-            diseased = sorted({l["vessel"] for l in lesions
-                               if l["stenosis_pct"] >= (50 if l["vessel"] == "LM" else 70)})
-            if diseased:
-                graft_site = GRAFT_BY_VESSEL.get(rng.choice(diseased))
 
         # 8. minor incidental findings (optional)
         incidental = []
@@ -332,17 +220,18 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
             "target_ok": classified["category"] == target,
             "label": classified["label"],
             "lesions": lesions,
+            "per_lesion": classified["per_lesion"],
             "plaque_burden": classified["plaque_burden"],
             "modifiers": classified["modifiers"],
             "declared_modifiers": declared,
             "stent_site": stent_site,
             "graft_site": graft_site,
+            "vulnerable_site": vulnerable_site,
+            "exception_site": exception_site,
             "non_evaluable": non_evaluable,
             "agatston": agatston,
             "technique": technique,
-            "vulnerable_site": vulnerable_site,
-            "exception_site": exception_site,
-            "classification_trace": classified["trace"] + trace,
+            "classification_trace": classified["trace"],
             "incidental": incidental,
             "language": language,
             "style": style,
