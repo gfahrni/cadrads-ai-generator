@@ -19,6 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import login  # noqa: E402
 import run  # noqa: E402
 
 
@@ -74,6 +75,40 @@ class TestDocumentation(unittest.TestCase):
         # width: compare after normalising whitespace.
         help_txt = " ".join(run._build_parser().format_help().split())
         self.assertIn("--dry-run | --plan-only | --show-prompt | --prompt-only", help_txt)
+
+
+class TestModelPicker(unittest.TestCase):
+    """The picker must reach any model, not only the ones displayed."""
+
+    def setUp(self):
+        self.models = [f"provider{i}/model-{i}" for i in range(1, 125)]
+        self.models[92] = "ollama-cloud/deepseek-v4-free"
+
+    def test_number_beyond_the_preview(self):
+        # regression: only the first 30 were selectable, the 93rd was unreachable
+        model, matches = login.resolve_model_choice("93", self.models)
+        self.assertEqual(model, "ollama-cloud/deepseek-v4-free")
+        self.assertIsNone(matches)
+
+    def test_first_and_last(self):
+        self.assertEqual(login.resolve_model_choice("1", self.models)[0], "provider1/model-1")
+        self.assertEqual(login.resolve_model_choice("124", self.models)[0], "provider124/model-124")
+
+    def test_out_of_range(self):
+        self.assertEqual(login.resolve_model_choice("125", self.models), (None, None))
+        self.assertEqual(login.resolve_model_choice("0", self.models), (None, None))
+
+    def test_text_filter_returns_global_numbers(self):
+        model, matches = login.resolve_model_choice("deepseek", self.models)
+        self.assertIsNone(model)
+        self.assertEqual([n for n, _ in matches], [93])
+        self.assertEqual(matches[0][1], "ollama-cloud/deepseek-v4-free")
+
+    def test_filter_without_match(self):
+        self.assertEqual(login.resolve_model_choice("zzz", self.models), (None, []))
+
+    def test_empty_choice(self):
+        self.assertEqual(login.resolve_model_choice("", self.models), (None, None))
 
 
 class TestPromptOnly(unittest.TestCase):

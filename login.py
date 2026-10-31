@@ -39,6 +39,28 @@ def _trim(text: str, max_lines: int = 6) -> list:
     return lines[:max_lines] + (["  ..."] if len(lines) > max_lines else [])
 
 
+def resolve_model_choice(choice: str, models: list):
+    """Resolve what the user typed against the FULL model list.
+
+    Returns (model_id, matches):
+      - a number in 1..len(models)  -> (the model, None)
+      - a filter string             -> (None, [(global_number, model), ...])
+      - anything else               -> (None, None)
+    """
+    choice = (choice or "").strip()
+    if not choice:
+        return None, None
+    if choice.isdigit():
+        index = int(choice)
+        if 1 <= index <= len(models):
+            return models[index - 1], None
+        return None, None
+    needle = choice.lower()
+    matches = [(number, name) for number, name in enumerate(models, start=1)
+               if needle in name.lower()]
+    return None, matches
+
+
 def _load_config():
     try:
         return cfgmod.load_settings(ROOT / "settings.json")
@@ -149,13 +171,37 @@ def action_models(cfg: dict) -> None:
         print("  -> fix llm.command and llm.model_label in settings.json.")
         return
 
-    choice = input("\n  Number to adopt (Enter = change nothing) > ").strip()
-    if not choice.isdigit() or not (1 <= int(choice) <= len(shown)):
+    model_id = None
+    for _ in range(4):
+        choice = input("\n  Number to adopt, or text to filter (Enter = change nothing) > ").strip()
+        if not choice:
+            print("  Unchanged.")
+            return
+
+        model_id, matches = resolve_model_choice(choice, all_models)
+        if model_id:
+            break
+        if matches is None:
+            print(f"  No model numbered '{choice}' (there are {len(all_models)}).")
+            continue
+        if not matches:
+            print(f"  No model matches '{choice}'.")
+            continue
+
+        print(f"  {len(matches)} model(s) match '{choice}':")
+        for number, name in matches[:MAX_SHOWN]:
+            print(f"  {number:>3}) {name}")
+        if len(matches) > MAX_SHOWN:
+            print(f"  ({len(matches) - MAX_SHOWN} more — narrow the filter)")
+        print("  Type one of those numbers.")
+
+    if not model_id:
         print("  Unchanged.")
         return
 
-    model_id = shown[int(choice) - 1]
-    if input(f"  Write '{model_id}' to settings.json? [Y/n] ").strip().lower() \
+    # on affiche ce qui va etre ecrit, meme si le numero n'etait pas dans l'apercu
+    print(f"\n  Selected: {model_id}")
+    if input("  Write it to settings.json? [Y/n] ").strip().lower() \
             not in ("", "y", "yes", "o", "oui"):
         print("  Unchanged.")
         return
