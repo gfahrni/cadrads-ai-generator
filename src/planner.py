@@ -212,9 +212,11 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
             candidates = []
             for lesion in surgical:
                 segments = reference["vessels"][lesion["vessel"]]
-                index = segments.index(lesion["segment"])
-                if index + 1 < len(segments):
-                    candidates.append((lesion, segments[index + 1]))
+                # NB: do not name this "index", it would shadow the loop counter used
+                # for the case id (that bug silently overwrote 44 prompts once).
+                segment_position = segments.index(lesion["segment"])
+                if segment_position + 1 < len(segments):
+                    candidates.append((lesion, segments[segment_position + 1]))
             if candidates:
                 graft_target, distal_segment = rng.choice(candidates)
                 conduit = GRAFT_CONDUIT.get(graft_target["vessel"], "bypass graft")
@@ -223,6 +225,12 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
                 else:
                     graft_site = (f"{conduit} to the {distal_segment} "
                                   f"{graft_target['vessel']}")
+
+        # 6b. G must not survive without a graft: a label such as "4A/P2/G" with no
+        # graft line would force the model to invent one.
+        if "G" in classified["modifiers"] and not graft_site:
+            declared = [m for m in declared if m != "G"]
+            classified = rules.classify(lesions, declared, non_evaluable)
 
         # 7. V designates a soft plaque, E names an abnormality
         vulnerable_site = None

@@ -256,6 +256,21 @@ class PlanInvariants(unittest.TestCase):
         drift = [c["case_id"] for c in self.cases if not c["target_ok"]]
         self.assertEqual(drift, [], f"target/computed drift: {drift[:5]}")
 
+    def test_case_ids_are_unique(self):
+        """A duplicate id silently overwrites a prompt file and shrinks the corpus."""
+        ids = [case["case_id"] for case in self.cases]
+        self.assertEqual(len(ids), len(set(ids)),
+                         f"{len(ids) - len(set(ids))} duplicate case ids")
+
+    def test_one_case_per_requested_report(self):
+        self.assertEqual(len(self.cases), self.cfg["run"]["n_reports"])
+        self.assertEqual(len({c["case_id"] for c in self.cases}), self.cfg["run"]["n_reports"])
+
+    def test_no_graft_modifier_without_a_graft(self):
+        for case in self.cases:
+            if "G" in case["modifiers"]:
+                self.assertTrue(case["graft_site"], f"{case['case_id']}: G without a graft")
+
     def test_distribution_matches_the_weights(self):
         cfg = self.cfg
         total = sum(cfg["generation"]["cadrads_weights"].values())
