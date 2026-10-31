@@ -25,6 +25,8 @@ INDICATIONS = {
 
 BURDEN_LEGEND = (
     "P1 = mild plaque burden, P2 = moderate, P3 = severe, P4 = extensive. "
+    "P describes the TOTAL amount of plaque in the coronary tree, not the severity of "
+    "the worst stenosis: a single severe lesion is still a small total burden. "
     "N = non-diagnostic segment, S = stent, G = graft, E = exception, "
     "V = vulnerable plaque."
 )

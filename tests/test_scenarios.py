@@ -32,7 +32,7 @@ class TestConformance(unittest.TestCase):
             with self.subTest(target=target):
                 seen = Counter()
                 for _ in range(DRAWS):
-                    scenario = scenarios.build(rng, self.reference, target, self.cfg)
+                    scenario = scenarios.build(rng, self.reference, target, self.cfg, 70)
                     category, _ = classify.classify_category(scenario["lesions"], [])
                     seen[category] += 1
                 self.assertEqual(set(seen), {target}, f"target {target} produced {dict(seen)}")
@@ -43,7 +43,7 @@ class TestConformance(unittest.TestCase):
         rng = random.Random(7)
         for target in TARGETS:
             for _ in range(DRAWS):
-                scenario = scenarios.build(rng, self.reference, target, cfg)
+                scenario = scenarios.build(rng, self.reference, target, cfg, 70)
                 self.assertLessEqual(len(scenario["lesions"]), 1,
                                      f"mono mode gave {len(scenario['lesions'])} lesions in {target}")
                 if target != "0":
@@ -56,7 +56,7 @@ class TestConformance(unittest.TestCase):
         sizes = set()
         for target in TARGETS:
             for _ in range(DRAWS):
-                scenario = scenarios.build(rng, self.reference, target, cfg)
+                scenario = scenarios.build(rng, self.reference, target, cfg, 70)
                 n = len(scenario["lesions"])
                 sizes.add(n)
                 if target == "0":
@@ -72,14 +72,14 @@ class TestConformance(unittest.TestCase):
             rng = random.Random(13)
             for target in TARGETS:
                 for _ in range(100):
-                    scenario = scenarios.build(rng, self.reference, target, cfg)
+                    scenario = scenarios.build(rng, self.reference, target, cfg, 70)
                     vessels = [l["vessel"] for l in scenario["lesions"]]
                     self.assertEqual(len(vessels), len(set(vessels)),
                                      f"{mode}/{target}: two lesions in the same artery {vessels}")
 
     def test_unknown_target_is_rejected(self):
         with self.assertRaises(ValueError):
-            scenarios.build(random.Random(1), self.reference, "6", self.cfg)
+            scenarios.build(random.Random(1), self.reference, "6", self.cfg, 70)
 
 
 class TestTreeRules(unittest.TestCase):
@@ -90,7 +90,7 @@ class TestTreeRules(unittest.TestCase):
         cls.reference = json.loads((ROOT / "reference" / "cadrads_2_0.json").read_text(encoding="utf-8"))
         cls.cfg = json.loads((ROOT / "settings.json").read_text(encoding="utf-8"))
         cls.rng = random.Random(3)
-        cls.scenarios = {t: [scenarios.build(cls.rng, cls.reference, t, cls.cfg) for _ in range(DRAWS)]
+        cls.scenarios = {t: [scenarios.build(cls.rng, cls.reference, t, cls.cfg, 70) for _ in range(DRAWS)]
                          for t in TARGETS}
 
     def test_cad_rads_0_has_no_lesion(self):

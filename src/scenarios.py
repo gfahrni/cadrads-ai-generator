@@ -26,7 +26,9 @@ PLAQUE_TYPES = ["calcified", "mixed", "non-calcified"]
 
 # Stenosis band of each LESION grade (the 4A/4B split is patient-level).
 STENOSIS_BAND = {
-    "1": (1, 24),
+    # A stenosis below 5 % is a measurement artefact, not a finding: the band starts
+    # at 5 so the report never has to state "1 % luminal stenosis".
+    "1": (5, 24),
     "2": (25, 49),
     "3": (50, 69),
     "4": (70, 99),
@@ -42,16 +44,33 @@ MAX_LESIONS = 3
 # --------------------------------------------------------------------------
 # helpers
 # --------------------------------------------------------------------------
-def _lesion(rng, reference, vessel, grade):
-    """One lesion of the given grade, in the given vessel."""
-    low, high = STENOSIS_BAND[grade]
-    stenosis = rng.randint(low, high)
+def _plaque(rng, grade, age):
+    """Plaque composition, biased by age.
+
+    Older patients calcify more: a 77-year-old with two severe plaques and an
+    Agatston score of zero does not occur. The bias moves from 15 % calcified at 45
+    to 60 % at 88, with a constant 30 % mixed share.
+    """
     if grade == "5":
         # A chronic total occlusion is calcified or mixed; a purely soft occlusion
         # is atypical and reads as synthetic.
-        plaque = rng.choice(["calcified", "mixed"])
-    else:
-        plaque = rng.choice(PLAQUE_TYPES)
+        return rng.choice(["calcified", "mixed"])
+    span = max(0.0, min(1.0, (age - 45) / 43))
+    p_calcified = 0.15 + 0.45 * span
+    p_mixed = 0.30
+    draw = rng.random()
+    if draw < p_calcified:
+        return "calcified"
+    if draw < p_calcified + p_mixed:
+        return "mixed"
+    return "non-calcified"
+
+
+def _lesion(rng, reference, vessel, grade, age):
+    """One lesion of the given grade, in the given vessel."""
+    low, high = STENOSIS_BAND[grade]
+    stenosis = rng.randint(low, high)
+    plaque = _plaque(rng, grade, age)
     return {
         "vessel": vessel,
         "segment": rng.choice(reference["vessels"][vessel]),
@@ -77,14 +96,14 @@ def _free_vessel(rng, pools, used):
     return rng.choice(pool) if pool else None
 
 
-def _fill(rng, reference, lesions, budget, grades, pools):
+def _fill(rng, reference, lesions, budget, grades, pools, age):
     """Add associated lesions until the budget is reached, on distinct vessels."""
     while len(lesions) < budget:
         used = {l["vessel"] for l in lesions}
         vessel = _free_vessel(rng, pools, used)
         if vessel is None:
             break
-        lesions.append(_lesion(rng, reference, vessel, rng.choice(grades)))
+        lesions.append(_lesion(rng, reference, vessel, rng.choice(grades), age))
     return lesions
 
 
@@ -110,7 +129,7 @@ def _soft_plaque(lesions, rng):
 # --------------------------------------------------------------------------
 # CAD-RADS 0
 # --------------------------------------------------------------------------
-def scenario_0(rng, reference, cfg):
+def scenario_0(rng, reference, cfg, age):
     """CAD-RADS 0 — no plaque anywhere, whatever the lesion mode.
 
     Tree: nothing can be associated. Not a single stenosis, no stent, no graft, no
@@ -123,7 +142,7 @@ def scenario_0(rng, reference, cfg):
 # --------------------------------------------------------------------------
 # CAD-RADS 1
 # --------------------------------------------------------------------------
-def scenario_1(rng, reference, cfg):
+def scenario_1(rng, reference, cfg, age):
     """CAD-RADS 1 — index lesion 1-24 % in LAD, LCX or RCA.
 
     Tree:
@@ -137,9 +156,9 @@ def scenario_1(rng, reference, cfg):
         the study as CAD-RADS N.
     """
     budget = _budget(rng, cfg)
-    lesions = [_lesion(rng, reference, rng.choice(CORONARY), "1")]
+    lesions = [_lesion(rng, reference, rng.choice(CORONARY), "1", age)]
     if budget > 1:
-        _fill(rng, reference, lesions, budget, ("1",), (CORONARY,))
+        _fill(rng, reference, lesions, budget, ("1",), (CORONARY,), age)
 
     modifiers = _modifiers(rng, ("S", "V", "E"), cfg)
     if "V" in modifiers:
@@ -150,7 +169,7 @@ def scenario_1(rng, reference, cfg):
 # --------------------------------------------------------------------------
 # CAD-RADS 2
 # --------------------------------------------------------------------------
-def scenario_2(rng, reference, cfg):
+def scenario_2(rng, reference, cfg, age):
     """CAD-RADS 2 — index lesion 25-49 %.
 
     Tree:
@@ -159,9 +178,9 @@ def scenario_2(rng, reference, cfg):
       - S, V, E allowed; G excluded (needs >= 70 %); N excluded (would give N).
     """
     budget = _budget(rng, cfg)
-    lesions = [_lesion(rng, reference, rng.choice(CORONARY), "2")]
+    lesions = [_lesion(rng, reference, rng.choice(CORONARY), "2", age)]
     if budget > 1:
-        _fill(rng, reference, lesions, budget, ("1", "2"), (CORONARY,))
+        _fill(rng, reference, lesions, budget, ("1", "2"), (CORONARY,), age)
 
     modifiers = _modifiers(rng, ("S", "V", "E"), cfg)
     if "V" in modifiers:
@@ -172,7 +191,7 @@ def scenario_2(rng, reference, cfg):
 # --------------------------------------------------------------------------
 # CAD-RADS 3
 # --------------------------------------------------------------------------
-def scenario_3(rng, reference, cfg):
+def scenario_3(rng, reference, cfg, age):
     """CAD-RADS 3 — index lesion 50-69 %.
 
     Tree:
@@ -185,9 +204,9 @@ def scenario_3(rng, reference, cfg):
       - S, V, E, N allowed.
     """
     budget = _budget(rng, cfg)
-    lesions = [_lesion(rng, reference, rng.choice(CORONARY), "3")]
+    lesions = [_lesion(rng, reference, rng.choice(CORONARY), "3", age)]
     if budget > 1:
-        _fill(rng, reference, lesions, budget, ("1", "2", "3"), (CORONARY,))
+        _fill(rng, reference, lesions, budget, ("1", "2", "3"), (CORONARY,), age)
 
     modifiers = _modifiers(rng, ("S", "N", "V", "E"), cfg)
     if "V" in modifiers:
@@ -198,7 +217,7 @@ def scenario_3(rng, reference, cfg):
 # --------------------------------------------------------------------------
 # CAD-RADS 4A
 # --------------------------------------------------------------------------
-def scenario_4a(rng, reference, cfg):
+def scenario_4a(rng, reference, cfg, age):
     """CAD-RADS 4A — at least one 70-99 % lesion, no left main, fewer than 3 vessels.
 
     Tree:
@@ -210,11 +229,11 @@ def scenario_4a(rng, reference, cfg):
         indication.
     """
     budget = _budget(rng, cfg)
-    lesions = [_lesion(rng, reference, rng.choice(CORONARY), "4")]
+    lesions = [_lesion(rng, reference, rng.choice(CORONARY), "4", age)]
     if budget > 1:
         # With three lesions, the two associated ones must stay below 70 %.
         grades = ("1", "2", "3") if budget >= 3 else ("1", "2", "3", "4")
-        _fill(rng, reference, lesions, budget, grades, (CORONARY,))
+        _fill(rng, reference, lesions, budget, grades, (CORONARY,), age)
 
     modifiers = _modifiers(rng, ("S", "G", "N", "V", "E"), cfg)
     if "V" in modifiers:
@@ -225,7 +244,7 @@ def scenario_4a(rng, reference, cfg):
 # --------------------------------------------------------------------------
 # CAD-RADS 4B
 # --------------------------------------------------------------------------
-def scenario_4b(rng, reference, cfg):
+def scenario_4b(rng, reference, cfg, age):
     """CAD-RADS 4B — a left main stenosis >= 50 %, or three vessels >= 70 %.
 
     Tree, two mutually exclusive shapes:
@@ -241,12 +260,12 @@ def scenario_4b(rng, reference, cfg):
 
     if three_vessel_possible and rng.random() < 0.55:
         # (b) three-vessel obstructive disease, exactly three lesions
-        lesions = [_lesion(rng, reference, vessel, "4") for vessel in CORONARY]
+        lesions = [_lesion(rng, reference, vessel, "4", age) for vessel in CORONARY]
     else:
         # (a) left main >= 50 %, plus optional coronary lesions up to the budget
-        lesions = [_lesion(rng, reference, "LM", rng.choice(["3", "4"]))]
+        lesions = [_lesion(rng, reference, "LM", rng.choice(["3", "4"]), age)]
         if budget > 1:
-            _fill(rng, reference, lesions, budget, ("1", "2", "3", "4"), (CORONARY,))
+            _fill(rng, reference, lesions, budget, ("1", "2", "3", "4"), (CORONARY,), age)
 
     modifiers = _modifiers(rng, ("S", "G", "N", "V", "E"), cfg)
     if "V" in modifiers:
@@ -257,7 +276,7 @@ def scenario_4b(rng, reference, cfg):
 # --------------------------------------------------------------------------
 # CAD-RADS 5
 # --------------------------------------------------------------------------
-def scenario_5(rng, reference, cfg):
+def scenario_5(rng, reference, cfg, age):
     """CAD-RADS 5 — at least one total occlusion.
 
     Tree:
@@ -270,9 +289,9 @@ def scenario_5(rng, reference, cfg):
       - S, G, E, N allowed.
     """
     budget = _budget(rng, cfg)
-    lesions = [_lesion(rng, reference, rng.choice(CORONARY), "5")]
+    lesions = [_lesion(rng, reference, rng.choice(CORONARY), "5", age)]
     if budget > 1:
-        _fill(rng, reference, lesions, budget, ("1", "2", "3", "4", "5"), (CORONARY,))
+        _fill(rng, reference, lesions, budget, ("1", "2", "3", "4", "5"), (CORONARY,), age)
 
     return {"lesions": lesions, "modifiers": _modifiers(rng, ("S", "G", "N", "E"), cfg)}
 
@@ -291,8 +310,8 @@ BUILDERS = {
 }
 
 
-def build(rng, reference, target, cfg) -> dict:
-    """Build the scenario of one final category."""
+def build(rng, reference, target, cfg, age: int) -> dict:
+    """Build the scenario of one final category, for a patient of the given age."""
     if target not in BUILDERS:
         raise ValueError(f"unknown CAD-RADS target: {target}")
-    return BUILDERS[target](rng, reference, cfg)
+    return BUILDERS[target](rng, reference, cfg, age)

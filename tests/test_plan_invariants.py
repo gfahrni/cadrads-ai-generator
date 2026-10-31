@@ -144,6 +144,30 @@ class PlanInvariants(unittest.TestCase):
                                  f"{case['case_id']}: useless non-diagnostic segment on a severe vessel")
 
     # -- plaque burden -----------------------------------------------------
+    def test_no_artefactual_stenosis(self):
+        """A stenosis below 5 % is a measurement artefact, not a finding."""
+        for case in self.cases:
+            for lesion in case["lesions"]:
+                self.assertGreaterEqual(lesion["stenosis_pct"], 5,
+                                        f"{case['case_id']}: {lesion['stenosis_pct']}% stenosis")
+
+    def test_graft_names_its_anastomosis(self):
+        """The model must not have to invent where the graft lands."""
+        for case in self.cases:
+            if not case["graft_site"]:
+                continue
+            self.assertTrue(any(v in case["graft_site"] for v in ("LAD", "LCX", "RCA", "left main")),
+                            f"{case['case_id']}: graft without an anastomotic target: {case['graft_site']}")
+            self.assertIn(" to the ", case["graft_site"],
+                          f"{case['case_id']}: graft does not state where it goes")
+
+    def test_calcium_grows_with_age(self):
+        """Plaque composition is age-dependent: the score must follow."""
+        young = [c["agatston"] for c in self.cases if c["age"] < 55]
+        old = [c["agatston"] for c in self.cases if c["age"] >= 75]
+        self.assertGreater(sum(old) / len(old), 1.5 * sum(young) / len(young),
+                           "the calcium score does not follow the patient age")
+
     def test_no_two_lesions_in_the_same_artery(self):
         for case in self.cases:
             vessels = [l["vessel"] for l in case["lesions"]]

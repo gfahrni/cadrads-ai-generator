@@ -43,11 +43,13 @@ CALCIUM_BY_PLAQUE = {
 CALCIUM_SEVERITY_FACTOR = ((25, 0.5), (50, 0.75), (200, 1.0))
 
 # A graft needs a bypassed territory with a surgical stenosis.
-GRAFT_BY_VESSEL = {
-    "LM": "saphenous vein graft to the left main",
-    "LAD": "LIMA to LAD",
-    "LCX": "saphenous vein graft to LCX",
-    "RCA": "RIMA to RCA",
+# A graft is described with the conduit AND the segment it is anastomosed to, so the
+# model never has to invent the distal bed.
+GRAFT_CONDUIT = {
+    "LM": "saphenous vein graft",
+    "LAD": "LIMA graft",
+    "LCX": "saphenous vein graft",
+    "RCA": "RIMA graft",
 }
 
 # Concrete non-atherosclerotic abnormalities for modifier E: the model must not have
@@ -158,8 +160,12 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
     cases = []
 
     for index, target in enumerate(queue, start=1):
-        # 1. lesion set and modifiers, from the tree of this category
-        scenario = scenarios.build(rng, reference, target, cfg)
+        # 1. the age comes first: it biases the plaque composition, so it must be
+        #    known before the lesions are drawn
+        age = rng.randint(age_lo, age_hi)
+
+        # 2. lesion set and modifiers, from the tree of this category
+        scenario = scenarios.build(rng, reference, target, cfg, age)
         lesions = scenario["lesions"]
         declared = scenario["modifiers"]
 
@@ -171,7 +177,6 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
         if sex == "random":
             sex = rng.choice(["male", "female"])
 
-        age = rng.randint(age_lo, age_hi)
         language = rng.choice(gen["languages"])
         technique = rng.choice(TECHNIQUES)
         indication = gen["indication"]
@@ -200,10 +205,16 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
         # 6. graft into a territory with a surgical stenosis
         graft_site = None
         if "G" in classified["modifiers"]:
-            surgical = sorted({l["vessel"] for l in lesions
-                               if l["stenosis_pct"] >= (50 if l["vessel"] == "LM" else 70)})
+            surgical = [l for l in lesions
+                        if l["stenosis_pct"] >= (50 if l["vessel"] == "LM" else 70)]
             if surgical:
-                graft_site = GRAFT_BY_VESSEL.get(rng.choice(surgical))
+                graft_target = rng.choice(surgical)
+                conduit = GRAFT_CONDUIT.get(graft_target["vessel"], "bypass graft")
+                if graft_target["vessel"] == "LM":
+                    graft_site = f"{conduit} to the left main"
+                else:
+                    graft_site = (f"{conduit} to the {graft_target['segment']} "
+                                  f"{graft_target['vessel']}")
 
         # 7. V designates a soft plaque, E names an abnormality
         vulnerable_site = None

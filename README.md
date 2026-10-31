@@ -5,7 +5,7 @@ research on large language models. No patient data, no external dependency
 (Python 3.10+ standard library only).
 
 > **Status**: plumbing, plan, classification engine and checks are tested
-> (130 tests, run in CI). The real call goes through the `opencode` CLI (see
+> (133 tests, run in CI). The real call goes through the `opencode` CLI (see
 > "Connecting opencode"); it could not be validated in the development
 > environment. Only `backend: http_api` remains a placeholder.
 
@@ -136,7 +136,7 @@ cadrads-generator/            (repository root)
 │   ├── auth.py            opencode connection + call probe
 │   ├── validate.py        cleaning and automatic checks
 │   └── store.py           manifest, resume, export
-└── tests/                 130 tests, stdlib only
+└── tests/                 133 tests, stdlib only
 ```
 
 The files in `src/` are not meant to be edited by hand: all tuning happens through
@@ -565,7 +565,7 @@ python3 tests/test_validate.py     # 16 tests  — cleaning and checks
 python3 tests/test_auth.py         # 10 tests  — connection state, failure path, fast-fail
 python3 tests/test_cli.py          # 14 tests  — flags, exclusivity, export, picker, reload
 python3 tests/test_config.py       #  8 tests  — model rewrite, indication values
-python3 tests/test_plan_invariants.py  # 34 tests  — "X impossible when Y" over 2000 cases
+python3 tests/test_plan_invariants.py  # 37 tests  — "X impossible when Y" over 2000 cases
 python3 tests/test_scenarios.py    # 13 tests  — per-category trees, mono/multi, distinct arteries
 ```
 
@@ -575,7 +575,7 @@ label format; prevalences matching the catalogue, `age_min` / `sex` gating, cap,
 exclusion, determinism; preamble and code-block cleaning, label tolerance, mentions
 of modifiers and findings; connection state and its failure path.
 
-130 tests, standard library only. They also run in continuous integration
+133 tests, standard library only. They also run in continuous integration
 (`.github/workflows/tests.yml`, Python 3.10 to 3.14): that is the proof that the
 imposed label follows the rules and that the draw is reproducible.
 
@@ -610,7 +610,10 @@ imposed label follows the rules and that the draw is reproducible.
   never occurs**, because the scenario models at most three diseased vessels. That is
   documented rather than faked.
 - **Simplified anatomy**: no dominance, no collaterals, no segmental calcium score,
-  no CT-FFR.
+  no CT-FFR. The calcium score is derived from the described plaques and biased by
+  age, not modelled segment by segment.
+- **No stenosis below 5 %**: such values are measurement artefacts, so the grade-1
+  band starts at 5 %.
 - **Minor incidental findings only**: no mass, lymphadenopathy, pulmonary embolism or
   significant aneurysm. The corpus is therefore cleaner than a real cohort.
 - **Lexical automatic checks**: a report can pass all of them and remain clinically
