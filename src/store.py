@@ -7,6 +7,7 @@ un cas deja reussi).
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import re
 from datetime import datetime
@@ -31,6 +32,8 @@ class RunStore:
         self.manifest_path = self.dir / "manifest.jsonl"
         self.summary_path = self.dir / "summary.json"
         self.csv_path = self.dir / "reports_index.csv"
+        self.prompts_dir = self.dir / "prompts"
+        self.prompt_index_path = self.prompts_dir / "index.tsv"
         self.log_path = self.dir / "run.log"
 
     # -- cycle de vie -------------------------------------------------------
@@ -133,6 +136,36 @@ class RunStore:
         path = self.rejected_dir / self.filename_for(case)
         path.write_text(text.rstrip() + "\n", encoding="utf-8")
         return path
+
+    def write_prompt(self, case: dict, prompt_text: str) -> Path:
+        """Ecrit le prompt rendu, tel qu'il sera envoye (aucune en-tete ajoutee)."""
+        self.prompts_dir.mkdir(parents=True, exist_ok=True)
+        path = self.prompts_dir / f"{_safe(case['case_id'])}.md"
+        path.write_text(prompt_text.rstrip() + "\n", encoding="utf-8")
+        return path
+
+    def write_prompt_index(self, cases) -> int:
+        """Index TSV reconstruit depuis les fichiers presents (idempotent, resumable)."""
+        if not self.prompts_dir.exists():
+            return 0
+        by_id = {case["case_id"]: case for case in cases}
+        rows = []
+        for path in sorted(self.prompts_dir.glob("*.md")):
+            case = by_id.get(path.stem, {})
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+            rows.append([
+                path.stem,
+                case.get("label", ""),
+                case.get("language", ""),
+                case.get("style", ""),
+                digest,
+                path.name,
+            ])
+        with self.prompt_index_path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle, delimiter="\t")
+            writer.writerow(["case_id", "label", "language", "style", "prompt_sha", "file"])
+            writer.writerows(rows)
+        return len(rows)
 
     def write_raw(self, case_id: str, payload: dict) -> None:
         path = self.raw_dir / f"{_safe(case_id)}.json"

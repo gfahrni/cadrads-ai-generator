@@ -33,15 +33,36 @@ def _parse_args(argv=None):
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--settings", default=str(ROOT / "settings.json"), help="chemin de settings.json")
-    parser.add_argument("--dry-run", action="store_true", help="aucun appel LLM, sorties isolees en *-dryrun")
     parser.add_argument("--limit", type=int, default=None, help="ne traiter que les N premiers cas")
     parser.add_argument("--no-resume", action="store_true", help="ignorer le manifeste existant")
-    parser.add_argument("--show-prompt", action="store_true", help="afficher le 1er prompt rendu puis quitter")
-    parser.add_argument("--plan-only", action="store_true", help="afficher le plan et les labels calcules, sans LLM")
     parser.add_argument("--no-probe", action="store_true",
                         help="ne pas refaire l'appel de verification au demarrage")
     parser.add_argument("--quiet", action="store_true", help="sortie minimale")
+
+    # Modes sans appel au modele : exclusifs entre eux. argparse fournit le
+    # message d'erreur si l'on en combine deux.
+    group = parser.add_argument_group("modes sans appel au modele (exclusifs)")
+    quiet = group.add_mutually_exclusive_group()
+    quiet.add_argument("--dry-run", action="store_true",
+                       help="pipeline complet avec un client factice, sorties isolees en *-dryrun")
+    quiet.add_argument("--plan-only", action="store_true",
+                       help="afficher le plan et les labels calcules, sans rien ecrire")
+    quiet.add_argument("--show-prompt", action="store_true",
+                       help="afficher le prompt du premier cas puis quitter")
+    quiet.add_argument("--prompt-only", action="store_true",
+                       help="ecrire tous les prompts rendus dans prompts/, sans appeler le modele")
+
+    parser.add_argument("--export-prompts", action="store_true",
+                        help="pendant un run normal, ecrire aussi chaque prompt dans prompts/")
     return parser.parse_args(argv)
+
+
+def _rel(path) -> str:
+    """Chemin relatif au projet si possible, absolu sinon (output_dir hors projet)."""
+    try:
+        return str(Path(path).relative_to(ROOT))
+    except ValueError:
+        return str(path)
 
 
 def _rate(num: int, den: int) -> str:
@@ -155,7 +176,7 @@ def main(argv=None) -> int:
     existing = run.existing_fingerprint()
     if existing and existing != fingerprint:
         print(
-            f"\n[RUN] Le dossier {run.dir.relative_to(ROOT)} a deja ete produit avec une autre "
+            f"\n[RUN] Le dossier {_rel(run.dir)} a deja ete produit avec une autre "
             f"configuration\n      (empreinte {existing} vs {fingerprint}).\n"
             f"      -> utilise un autre run.run_id, ou renomme/supprime ce dossier.\n",
             file=sys.stderr,
@@ -163,6 +184,19 @@ def main(argv=None) -> int:
         return 2
     if not (run.dir / "run.json").exists():
         run.snapshot_settings(cfg, templates, fingerprint)
+
+    if args.prompt_only:
+        for case in cases:
+            rendered = prompt.render(templates, case, cfg, reference)
+            run.write_prompt(case, rendered["prompt"])
+        indexed = run.write_prompt_index(cases)
+        if not args.quiet:
+            print()
+            print(f"  {len(cases)} prompts ecrits dans {_rel(run.prompts_dir)}")
+            print(f"  index        : {_rel(run.prompt_index_path)} ({indexed} lignes)")
+            print("  aucun appel au modele n'a ete effectue.")
+            print()
+        return 0
 
     done = set() if args.no_resume or not cfg["run"]["resume"] else run.done_ids()
 
@@ -219,7 +253,7 @@ def main(argv=None) -> int:
         planned = Counter(c["cadrads"] for c in cases)
         print()
         print(f"  run        : {run.run_id}")
-        print(f"  sortie     : {run.dir.relative_to(ROOT)}")
+        print(f"  sortie     : {_rel(run.dir)}")
         print(f"  backend    : {cfg['llm']['backend']}  ({cfg['llm'].get('model_label', '')})")
         print(f"  cas        : {len(cases)}"
               + (f"  ({len(done)} deja faits, ignores)" if done else ""))
@@ -249,6 +283,10 @@ def main(argv=None) -> int:
             continue
 
         rendered = prompt.render(templates, case, cfg, reference)
+        if args.export_prompts:
+            # ecrit AVANT l'appel : un run interrompu laisse les prompts sur disque
+            run.write_prompt(case, rendered["prompt"])
+
         result = client.generate(rendered["prompt"], case)
 
         expected = {
@@ -282,7 +320,7 @@ def main(argv=None) -> int:
             if not args.quiet:
                 print(f"[{index:>3}/{len(cases)}] {case['case_id']}  ECHEC  {result.error}")
             if consecutive_errors >= cfg["run"]["max_consecutive_errors"]:
-                print(f"\n[ARRET] {consecutive_errors} echecs consecutifs — voir {run.log_path.relative_to(ROOT)}",
+                print(f"\n[ARRET] {consecutive_errors} echecs consecutifs — voir {_rel(run.log_path)}",
                       file=sys.stderr)
                 break
             continue
@@ -347,6 +385,9 @@ def main(argv=None) -> int:
             time.sleep(float(cfg["llm"]["delay_between_calls_s"]))
 
     # ---- resume -----------------------------------------------------------
+    if args.export_prompts:
+        run.write_prompt_index(cases)
+
     records = run.records()
     summary = _build_summary(cases, records, run.run_id, fingerprint, cfg)
     summary["session"] = {"ok": session_ok, "excluded": session_excluded,
@@ -372,7 +413,7 @@ def main(argv=None) -> int:
         if summary["n_target_mismatch"]:
             print(f"  derive du plan    : {summary['n_target_mismatch']} cas (voir manifeste)")
         print(f"  duree             : {round(time.time() - started, 1)}s")
-        print(f"  -> {run.dir.relative_to(ROOT)}")
+        print(f"  -> {_rel(run.dir)}")
         print()
 
     return 1 if summary["n_error"] else 0

@@ -5,7 +5,7 @@ la recherche sur les LLM. Aucune donnée patient, aucune dépendance externe
 (Python 3.10+ standard library uniquement).
 
 > **Statut** : plomberie, plan, moteur de classification et contrôles testés
-> (58 tests, exécutés en CI). L'appel réel passe par le CLI `opencode` (voir
+> (63 tests, exécutés en CI). L'appel réel passe par le CLI `opencode` (voir
 > « Brancher ton compte opencode ») ; il n'a pas pu être validé dans
 > l'environnement de développement. Seul `backend: http_api` reste un placeholder.
 
@@ -67,6 +67,30 @@ python3 run.py                    # tout ce que dit settings.json
 **Attendu :** en fin d'exécution, les compteurs `label present`,
 `modif. decrits`, `decouvr. decrites`.
 
+### Les modes en un coup d'œil
+
+| Commande | Appel au modèle | Écrit |
+|---|---|---|
+| `run.py` | oui | rapports + manifeste |
+| `run.py --export-prompts` | oui | + `prompts/*.md` |
+| `run.py --dry-run` | non (client factice) | rapports factices |
+| `run.py --prompt-only` | **non** | `prompts/*.md` + index |
+| `run.py --plan-only` | non | rien (affichage) |
+| `run.py --show-prompt` | non | rien (affichage) |
+
+Les quatre modes sans appel sont **exclusifs entre eux** (argparse refuse les
+combinaisons). `--export-prompts` est composable avec un run normal ou un
+`--dry-run`.
+
+`--prompt-only` est le moyen de relire les 2 000 prompts **avant** de dépenser
+2 000 appels :
+
+```bash
+python3 run.py --prompt-only
+ls out/*/prompts/ | head
+cat out/*/prompts/index.tsv
+```
+
 ### Si ça ne démarre pas
 
 | Message | Quoi faire |
@@ -101,7 +125,7 @@ cadrads-generator/            (racine du dépôt)
 │   ├── auth.py            connexion opencode + test d'appel
 │   ├── validate.py        nettoyage et contrôles automatiques
 │   └── store.py           manifeste, reprise, export
-└── tests/                 58 tests, stdlib uniquement
+└── tests/                 63 tests, stdlib uniquement
 ```
 
 Les fichiers de `src/` ne sont pas faits pour être modifiés à la main : tout le
@@ -343,6 +367,9 @@ Deux routes, sans rien changer au projet :
 ```
 out/<run_id>/
 ├── reports/              .txt acceptés (le dataset)
+├── prompts/              prompts rendus (avec --export-prompts ou --prompt-only)
+│                         ├── SYN-0001.md  (le prompt exact, rien d'ajouté)
+│                         └── index.tsv    case_id, label, langue, style, sha
 ├── reports_rejected/     .txt exclus par un contrôle automatique
 ├── raw/<case_id>.json    prompt complet + réponse brute + contrôles + trace
 ├── manifest.jsonl        une ligne JSON par tentative (registre + audit)
@@ -438,6 +465,7 @@ python3 tests/test_classify.py     # 18 tests  — règles CAD-RADS
 python3 tests/test_incidental.py   # 16 tests  — prévalences, gating, plafond
 python3 tests/test_validate.py     # 16 tests  — nettoyage et contrôles
 python3 tests/test_auth.py         #  8 tests  — état de connexion, chemin d'échec
+python3 tests/test_cli.py          #  5 tests  — flags, exclusivité, export de prompts
 ```
 
 Couvrent : seuils de sténose, occlusion, tronc commun, 3 vaisseaux, précédence
@@ -446,7 +474,7 @@ burden, format du label ; prévalences conformes au catalogue, respect de
 `age_min` / `sex`, plafond, exclusion, déterminisme ; nettoyage des préambules et
 blocs de code, tolérance du label, mention des modificateurs et des découvertes.
 
-58 tests, stdlib uniquement. Ils tournent aussi en intégration continue
+63 tests, stdlib uniquement. Ils tournent aussi en intégration continue
 (`.github/workflows/tests.yml`, Python 3.10 à 3.13) : c'est la preuve que le label
 imposé est conforme et que le tirage est reproductible.
 
