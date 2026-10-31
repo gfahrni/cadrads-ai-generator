@@ -11,6 +11,12 @@ Some rules are repeated from block to block. That duplication is deliberate: it
 keeps each category readable on its own, instead of hiding the compatibility rules
 in generic helpers that must be re-derived every time.
 
+Two settings drive the number of lesions (generation.lesion_mode):
+
+  - "mono"  : exactly one lesion per patient (none for CAD-RADS 0);
+  - "multi" : between one and three lesions, ALWAYS on different coronary arteries.
+              Several lesions in the same artery are not modelled.
+
 The contract: the scenario returned for target T must produce category T when
 passed to classify.classify_category. The planner checks it and flags any drift.
 """
@@ -27,7 +33,10 @@ STENOSIS_BAND = {
     "5": (100, 100),
 }
 
+VESSELS = ("LM", "LAD", "LCX", "RCA")
 CORONARY = ("LAD", "LCX", "RCA")
+
+MAX_LESIONS = 3
 
 
 # --------------------------------------------------------------------------
@@ -51,10 +60,32 @@ def _lesion(rng, reference, vessel, grade):
     }
 
 
-def _pick_vessel(rng, allowed, used):
-    """A vessel from the allowed list, not already carrying a lesion."""
-    pool = [v for v in allowed if v not in used]
+def _budget(rng, cfg) -> int:
+    """How many lesions this patient may carry.
+
+    mono  -> exactly 1 (CAD-RADS 0 ignores it: no plaque at all)
+    multi -> 1, 2 or 3, uniformly
+    """
+    if cfg["generation"].get("lesion_mode", "multi") == "mono":
+        return 1
+    return rng.choice([1, 2, 3])
+
+
+def _free_vessel(rng, pools, used):
+    """A vessel from the pools, not already carrying a lesion (distinct arteries)."""
+    pool = [v for group in pools for v in group if v not in used]
     return rng.choice(pool) if pool else None
+
+
+def _fill(rng, reference, lesions, budget, grades, pools):
+    """Add associated lesions until the budget is reached, on distinct vessels."""
+    while len(lesions) < budget:
+        used = {l["vessel"] for l in lesions}
+        vessel = _free_vessel(rng, pools, used)
+        if vessel is None:
+            break
+        lesions.append(_lesion(rng, reference, vessel, rng.choice(grades)))
+    return lesions
 
 
 def _modifiers(rng, allowed, cfg):
@@ -80,11 +111,11 @@ def _soft_plaque(lesions, rng):
 # CAD-RADS 0
 # --------------------------------------------------------------------------
 def scenario_0(rng, reference, cfg):
-    """CAD-RADS 0 — no plaque anywhere.
+    """CAD-RADS 0 — no plaque anywhere, whatever the lesion mode.
 
     Tree: nothing can be associated. Not a single stenosis, no stent, no graft, no
-    100 % occlusion. The only compatible modifier is E (a non-atherosclerotic
-    abnormality), because it does not imply atherosclerosis.
+    occlusion. The only compatible modifier is E (a non-atherosclerotic abnormality),
+    because it does not imply atherosclerosis.
     """
     return {"lesions": [], "modifiers": _modifiers(rng, ("E",), cfg)}
 
@@ -96,21 +127,19 @@ def scenario_1(rng, reference, cfg):
     """CAD-RADS 1 — index lesion 1-24 % in LAD, LCX or RCA.
 
     Tree:
-      - a second grade-1 lesion may be added (never grade 2+: it would raise the
-        patient category to 2);
-      - left main excluded: any left main lesion >= 50 % forces 4B, and a left main
-        plaque under 50 % is not a meaningful CAD-RADS 1 example;
-      - S allowed (a patent stent elsewhere), V allowed (a vulnerable plaque is
-        often non-obstructive), E allowed;
+      - associated lesions: grade 1 only (a grade 2 would raise the patient category);
+      - left main excluded: a left main plaque under 50 % is not a meaningful
+        CAD-RADS 1 example, and >= 50 % would force 4B;
+      - S allowed (a patent stent elsewhere), V allowed (a vulnerable plaque is often
+        non-obstructive), E allowed;
       - G excluded: a bypass needs a >= 70 % stenosis, impossible here;
       - N excluded: a non-diagnostic segment with no stenosis >= 50 % reclassifies
         the study as CAD-RADS N.
     """
-    lesions = [_lesion(rng, reference, _pick_vessel(rng, CORONARY, ()), "1")]
-    if rng.random() < 0.30:  # a second minimal lesion is common
-        vessel = _pick_vessel(rng, CORONARY, {l["vessel"] for l in lesions})
-        if vessel:
-            lesions.append(_lesion(rng, reference, vessel, "1"))
+    budget = _budget(rng, cfg)
+    lesions = [_lesion(rng, reference, rng.choice(CORONARY), "1")]
+    if budget > 1:
+        _fill(rng, reference, lesions, budget, ("1",), (CORONARY,))
 
     modifiers = _modifiers(rng, ("S", "V", "E"), cfg)
     if "V" in modifiers:
@@ -125,17 +154,14 @@ def scenario_2(rng, reference, cfg):
     """CAD-RADS 2 — index lesion 25-49 %.
 
     Tree:
-      - one or two grade 1-2 lesions may be associated, in other coronary vessels;
-        a grade 2 keeps the patient category at 2;
-      - left main excluded, for the same reason as in CAD-RADS 1 (>= 50 % forces 4B);
+      - associated lesions: grade 1 or 2, in other coronary arteries;
+      - left main excluded, as in CAD-RADS 1 (>= 50 % forces 4B);
       - S, V, E allowed; G excluded (needs >= 70 %); N excluded (would give N).
     """
-    vessels = rng.sample(CORONARY, k=rng.choice([1, 1, 2]))
-    lesions = [_lesion(rng, reference, v, "2") for v in vessels]
-    if len(lesions) == 1 and rng.random() < 0.35:
-        vessel = _pick_vessel(rng, CORONARY, {l["vessel"] for l in lesions})
-        if vessel:
-            lesions.append(_lesion(rng, reference, vessel, rng.choice(["1", "2"])))
+    budget = _budget(rng, cfg)
+    lesions = [_lesion(rng, reference, rng.choice(CORONARY), "2")]
+    if budget > 1:
+        _fill(rng, reference, lesions, budget, ("1", "2"), (CORONARY,))
 
     modifiers = _modifiers(rng, ("S", "V", "E"), cfg)
     if "V" in modifiers:
@@ -150,7 +176,7 @@ def scenario_3(rng, reference, cfg):
     """CAD-RADS 3 — index lesion 50-69 %.
 
     Tree:
-      - associated lesions up to grade 3, so the patient category stays 3;
+      - associated lesions: grade 1 to 3, so the patient category stays 3;
       - left main excluded: a 50-69 % left main lesion is precisely the case the
         consensus promotes to 4B, so it cannot appear in a CAD-RADS 3 case;
       - N is now compatible: with a >= 50 % stenosis the category survives and N is
@@ -158,11 +184,10 @@ def scenario_3(rng, reference, cfg):
       - G still excluded: a bypass needs >= 70 %;
       - S, V, E, N allowed.
     """
-    lesions = [_lesion(rng, reference, _pick_vessel(rng, CORONARY, ()), "3")]
-    if rng.random() < 0.45:
-        vessel = _pick_vessel(rng, CORONARY, {l["vessel"] for l in lesions})
-        if vessel:
-            lesions.append(_lesion(rng, reference, vessel, rng.choice(["1", "2", "3"])))
+    budget = _budget(rng, cfg)
+    lesions = [_lesion(rng, reference, rng.choice(CORONARY), "3")]
+    if budget > 1:
+        _fill(rng, reference, lesions, budget, ("1", "2", "3"), (CORONARY,))
 
     modifiers = _modifiers(rng, ("S", "N", "V", "E"), cfg)
     if "V" in modifiers:
@@ -174,23 +199,22 @@ def scenario_3(rng, reference, cfg):
 # CAD-RADS 4A
 # --------------------------------------------------------------------------
 def scenario_4a(rng, reference, cfg):
-    """CAD-RADS 4A — at least one 70-99 % lesion, in 1 or 2 vessels, no left main.
+    """CAD-RADS 4A — at least one 70-99 % lesion, no left main, fewer than 3 vessels.
 
     Tree:
       - index lesion 70-99 % in LAD, LCX or RCA;
-      - a second lesion is allowed (70-99 % in another coronary, or a lower grade);
-        two severe vessels still give 4A, three would give 4B, so at most two;
-      - left main excluded entirely: >= 50 % would force 4B, and a left main plaque
-        under 50 % next to a 4A lesion adds nothing here;
-      - S, G, V, E, N allowed: G becomes possible because a >= 70 % stenosis is a
-        surgical indication.
+      - associated lesions: grade 1-3 when the budget allows a third lesion (a third
+        severe vessel would make it 4B), grade 1-4 when at most two lesions in total;
+      - left main excluded entirely: >= 50 % would force 4B;
+      - S, G, V, E, N allowed: G becomes possible because >= 70 % is a surgical
+        indication.
     """
-    vessels = rng.sample(CORONARY, k=rng.choice([1, 1, 2]))
-    lesions = [_lesion(rng, reference, v, "4") for v in vessels]
-    if len(lesions) == 1 and rng.random() < 0.35:
-        vessel = _pick_vessel(rng, CORONARY, {l["vessel"] for l in lesions})
-        if vessel:
-            lesions.append(_lesion(rng, reference, vessel, rng.choice(["1", "2", "3"])))
+    budget = _budget(rng, cfg)
+    lesions = [_lesion(rng, reference, rng.choice(CORONARY), "4")]
+    if budget > 1:
+        # With three lesions, the two associated ones must stay below 70 %.
+        grades = ("1", "2", "3") if budget >= 3 else ("1", "2", "3", "4")
+        _fill(rng, reference, lesions, budget, grades, (CORONARY,))
 
     modifiers = _modifiers(rng, ("S", "G", "N", "V", "E"), cfg)
     if "V" in modifiers:
@@ -202,25 +226,27 @@ def scenario_4a(rng, reference, cfg):
 # CAD-RADS 4B
 # --------------------------------------------------------------------------
 def scenario_4b(rng, reference, cfg):
-    """CAD-RADS 4B — either a left main stenosis >= 50 %, or three vessels >= 70 %.
+    """CAD-RADS 4B — a left main stenosis >= 50 %, or three vessels >= 70 %.
 
     Tree, two mutually exclusive shapes:
-      (a) LEFT MAIN: a left main lesion of grade 3-5 (>= 50 %), optionally with an
-          associated coronary lesion of any grade. The left main is what makes it 4B,
-          even if its own grade is only 3;
-      (b) THREE VESSELS: 70-99 % in LAD, LCX and RCA simultaneously.
-    A total occlusion of the left main would be a 5, so shape (a) caps at grade 4.
+      (a) LEFT MAIN: a left main lesion of grade 3-4 (>= 50 %, capped at 99 % so the
+          case stays a 4B rather than becoming a 5), plus optional coronary lesions;
+      (b) THREE VESSELS: 70-99 % in LAD, LCX and RCA simultaneously. This shape needs
+          three lesions, so it is impossible in mono mode.
+
     S, G, V, E, N allowed.
     """
-    if rng.random() < 0.45:
-        # (a) left main >= 50 %, capped at 99 % so the case stays a 4B
-        lesions = [_lesion(rng, reference, "LM", rng.choice(["3", "4"]))]
-        if rng.random() < 0.70:
-            lesions.append(_lesion(rng, reference, _pick_vessel(rng, CORONARY, ()),
-                                   rng.choice(["1", "2", "3", "4"])))
-    else:
-        # (b) three-vessel obstructive disease
+    budget = _budget(rng, cfg)
+    three_vessel_possible = budget >= 3
+
+    if three_vessel_possible and rng.random() < 0.55:
+        # (b) three-vessel obstructive disease, exactly three lesions
         lesions = [_lesion(rng, reference, vessel, "4") for vessel in CORONARY]
+    else:
+        # (a) left main >= 50 %, plus optional coronary lesions up to the budget
+        lesions = [_lesion(rng, reference, "LM", rng.choice(["3", "4"]))]
+        if budget > 1:
+            _fill(rng, reference, lesions, budget, ("1", "2", "3", "4"), (CORONARY,))
 
     modifiers = _modifiers(rng, ("S", "G", "N", "V", "E"), cfg)
     if "V" in modifiers:
@@ -235,20 +261,18 @@ def scenario_5(rng, reference, cfg):
     """CAD-RADS 5 — at least one total occlusion.
 
     Tree:
-      - index lesion 100 % in LAD, LCX or RCA (left main excluded: an occluded left
-        main is a different clinical entity, and the consensus example set does not
-        cover it);
-      - an associated lesion of any grade may coexist, including a second occlusion,
-        which does not change the category;
+      - index lesion 100 % in LAD, LCX or RCA (an occluded left main is a different
+        clinical entity and is not modelled);
+      - associated lesions of any grade, including a second occlusion: the category
+        stays 5;
       - V excluded: a vulnerable plaque cannot be described on a totally occluded
         segment, so the model could not honour it;
       - S, G, E, N allowed.
     """
-    lesions = [_lesion(rng, reference, _pick_vessel(rng, CORONARY, ()), "5")]
-    if rng.random() < 0.55:
-        vessel = _pick_vessel(rng, CORONARY, {l["vessel"] for l in lesions})
-        if vessel:
-            lesions.append(_lesion(rng, reference, vessel, rng.choice(["1", "2", "3", "4", "5"])))
+    budget = _budget(rng, cfg)
+    lesions = [_lesion(rng, reference, rng.choice(CORONARY), "5")]
+    if budget > 1:
+        _fill(rng, reference, lesions, budget, ("1", "2", "3", "4", "5"), (CORONARY,))
 
     return {"lesions": lesions, "modifiers": _modifiers(rng, ("S", "G", "N", "E"), cfg)}
 

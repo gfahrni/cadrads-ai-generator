@@ -140,6 +140,12 @@ class PlanInvariants(unittest.TestCase):
                                  f"{case['case_id']}: useless non-diagnostic segment on a severe vessel")
 
     # -- plaque burden -----------------------------------------------------
+    def test_no_two_lesions_in_the_same_artery(self):
+        for case in self.cases:
+            vessels = [l["vessel"] for l in case["lesions"]]
+            self.assertEqual(len(vessels), len(set(vessels)),
+                             f"{case['case_id']}: two lesions in the same artery {vessels}")
+
     def test_burden_is_a_function_of_extent(self):
         for case in self.cases:
             self.assertEqual(case["plaque_burden"], classify.plaque_burden_for(case["lesions"]),

@@ -27,7 +27,7 @@
     "extra_args_note": "Add flags (temperature, seed) directly to 'command' if your CLI supports them."
   },
   "generation": {
-    "_doc": "languages: en | fr | de | it. style: free | structured | random. The CAD-RADS label is NOT configurable here: it is computed by src/classify.py from the lesions, then imposed in the prompt.",
+    "_doc": "languages: en | fr | de | it. style: free | structured | random. The CAD-RADS label is NOT configurable here: it is computed by src/classify.py from the lesions, then imposed in the prompt. cadrads_distribution and lesion_mode control the corpus shape.",
     "languages": [
       "en"
     ],
@@ -38,6 +38,8 @@
     ],
     "sex": "random",
     "indication": "stable",
+    "cadrads_distribution": "auto",
+    "_distribution_doc": "auto = epidemiology-like weights below; uniform = same share for every category listed in cadrads_weights (200 each is got with uniform + a multiple of the number of categories); manual = the weights below, normalised, so percentages work (they need not sum to 100).",
     "cadrads_weights": {
       "0": 0.05,
       "1": 0.25,
@@ -47,6 +49,8 @@
       "4B": 0.08,
       "5": 0.07
     },
+    "lesion_mode": "multi",
+    "_lesion_mode_doc": "mono = exactly one lesion per patient; multi = 1 to 3 lesions, always on different coronary arteries.",
     "modifier_weights": {
       "S": 0.15,
       "G": 0.08,

@@ -79,6 +79,20 @@ def allocate(n: int, weights: dict) -> dict:
     return counts
 
 
+def _distribution(gen: dict) -> dict:
+    """Weights actually used, according to generation.cadrads_distribution.
+
+    - "auto"    : the epidemiology-like defaults (settings.json as shipped)
+    - "uniform" : the same share for every category listed in cadrads_weights
+    - "manual"  : the weights of cadrads_weights, normalised (percentages work)
+    """
+    weights = {k: float(v) for k, v in gen["cadrads_weights"].items()}
+    mode = gen.get("cadrads_distribution", "auto")
+    if mode == "uniform":
+        return {k: 1.0 for k in weights}
+    return weights
+
+
 def _non_evaluable(rng, reference, lesions):
     """A non-diagnostic segment, on a vessel without a severe lesion."""
     severe = {l["vessel"] for l in lesions if l["stenosis_pct"] >= 50}
@@ -130,7 +144,7 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
     run = cfg["run"]
     rng = random.Random(run["seed"])
 
-    counts = allocate(run["n_reports"], gen["cadrads_weights"])
+    counts = allocate(run["n_reports"], _distribution(gen))
     order = [c for c in CADRADS_ORDER if counts.get(c, 0) > 0]
 
     # Interleaved order: avoids blocks of identical cases and a style drift if the

@@ -47,7 +47,9 @@ DEFAULTS = {
         "age_range": [45, 88],
         "sex": "random",
         "indication": "stable",
+        "cadrads_distribution": "auto",
         "cadrads_weights": {"0": 0.05, "1": 0.25, "2": 0.25, "3": 0.15, "4A": 0.15, "4B": 0.08, "5": 0.07},
+        "lesion_mode": "multi",
         "modifier_weights": {"S": 0.15, "G": 0.08, "E": 0.05, "V": 0.10, "N": 0.08},
     },
     "other_structures": {
@@ -159,10 +161,19 @@ def validate(cfg: dict) -> list[str]:
     if gen["indication"] not in ("stable", "acute", "random"):
         errors.append("generation.indication must be stable, acute or random")
 
+    if gen.get("cadrads_distribution") not in ("auto", "uniform", "manual"):
+        errors.append("generation.cadrads_distribution must be auto, uniform or manual")
+    if gen.get("lesion_mode") not in ("mono", "multi"):
+        errors.append("generation.lesion_mode must be mono or multi")
+
     weights = gen["cadrads_weights"]
     if not isinstance(weights, dict) or not weights:
         errors.append("generation.cadrads_weights must be a non-empty object")
     else:
+        unknown_categories = [k for k in weights if k not in ("0", "1", "2", "3", "4A", "4B", "5")]
+        if unknown_categories:
+            errors.append(f"generation.cadrads_weights: unknown categor{'y' if len(unknown_categories) == 1 else 'ies'} "
+                          f"{unknown_categories}; allowed: 0 1 2 3 4A 4B 5")
         bad = [k for k, v in weights.items() if not isinstance(v, (int, float)) or v < 0]
         if bad:
             errors.append(f"generation.cadrads_weights: invalid weights for {bad}")

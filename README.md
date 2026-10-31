@@ -5,7 +5,7 @@ research on large language models. No patient data, no external dependency
 (Python 3.10+ standard library only).
 
 > **Status**: plumbing, plan, classification engine and checks are tested
-> (123 tests, run in CI). The real call goes through the `opencode` CLI (see
+> (127 tests, run in CI). The real call goes through the `opencode` CLI (see
 > "Connecting opencode"); it could not be validated in the development
 > environment. Only `backend: http_api` remains a placeholder.
 
@@ -136,7 +136,7 @@ cadrads-generator/            (repository root)
 │   ├── auth.py            opencode connection + call probe
 │   ├── validate.py        cleaning and automatic checks
 │   └── store.py           manifest, resume, export
-└── tests/                 123 tests, stdlib only
+└── tests/                 127 tests, stdlib only
 ```
 
 The files in `src/` are not meant to be edited by hand: all tuning happens through
@@ -162,7 +162,9 @@ the program with a message listing the allowed values.
 | `llm` | `timeout_s` / `retries` / `delay_between_calls_s` | `240` / `2` / `1.5` | robustness and throughput |
 | `generation` | `languages` | `["en"]` | `en`, `fr`, `de`, `it` |
 | `generation` | `style` | `"random"` | `free`, `structured`, `random` |
-| `generation` | `cadrads_weights` | see file | target distribution of the categories |
+| `generation` | `cadrads_distribution` | `"auto"` | `auto`, `uniform` or `manual` |
+| `generation` | `cadrads_weights` | see file | weights or percentages, normalised |
+| `generation` | `lesion_mode` | `"multi"` | `mono` = one lesion per patient, `multi` = 1 to 3 |
 | `generation` | `modifier_weights` | see file | frequency of S, G, E, V, N |
 | `generation` | `age_range` / `sex` / `indication` | `[45,88]` / `random` / `stable` | simulated population; `indication: "random"` draws stable/acute per case |
 | `other_structures` | `describe_normal` | `false` | describe the organs of the field of view |
@@ -230,6 +232,52 @@ other_structures`:
 
 These are genuinely two different things: describing healthy organs (a complete
 report) is not the same as adding incidental findings.
+
+### Choosing the distribution of categories
+
+`generation.cadrads_distribution` has three values:
+
+| Value | Effect |
+|---|---|
+| `"auto"` | the epidemiology-like weights shipped in `settings.json` (0: 5 %, 1: 25 %, 2: 25 %, 3: 15 %, 4A: 15 %, 4B: 8 %, 5: 7 %) |
+| `"uniform"` | the same share for every category listed in `cadrads_weights` |
+| `"manual"` | the values of `cadrads_weights`, normalised — percentages work, they need not sum to 100 |
+
+Because `run.n_reports` is split by largest remainder, the counts are exact.
+
+**"200 of each category"**: there are **seven** categories, so 200 each is
+`n_reports: 1400` with `cadrads_distribution: "uniform"`:
+
+```json
+"run": { "n_reports": 1400 },
+"generation": { "cadrads_distribution": "uniform", "lesion_mode": "multi" }
+```
+
+If you want 1,200 cases instead, 4A and 4B have to share their 200 — give them half
+the weight of the others, for 100 each:
+
+```json
+"run": { "n_reports": 1200 },
+"generation": {
+  "cadrads_distribution": "manual",
+  "cadrads_weights": {"0": 2, "1": 2, "2": 2, "3": 2, "4A": 1, "4B": 1, "5": 2},
+  "lesion_mode": "multi"
+}
+```
+
+### Mono-lesion versus multi-lesion
+
+`generation.lesion_mode` controls the number of lesions per patient:
+
+| Value | Behaviour |
+|---|---|
+| `"mono"` | exactly one lesion (none for CAD-RADS 0) |
+| `"multi"` | 1 to 3 lesions, drawn uniformly, **always on different coronary arteries** |
+
+Several lesions in the same artery are never generated: the model would have to
+describe a tandem stenosis, and the per-lesion labelling would stop being
+unambiguous. Consequence for CAD-RADS 4B: the three-vessel shape needs three
+lesions, so in `mono` mode a 4B is necessarily built from a left main stenosis.
 
 ### The catalogue
 
@@ -517,8 +565,8 @@ python3 tests/test_validate.py     # 16 tests  — cleaning and checks
 python3 tests/test_auth.py         # 10 tests  — connection state, failure path, fast-fail
 python3 tests/test_cli.py          # 14 tests  — flags, exclusivity, export, picker, reload
 python3 tests/test_config.py       #  8 tests  — model rewrite, indication values
-python3 tests/test_plan_invariants.py  # 30 tests  — "X impossible when Y" over 2000 cases
-python3 tests/test_scenarios.py    # 10 tests  — each category tree produces its category
+python3 tests/test_plan_invariants.py  # 31 tests  — "X impossible when Y" over 2000 cases
+python3 tests/test_scenarios.py    # 13 tests  — per-category trees, mono/multi, distinct arteries
 ```
 
 They cover: stenosis thresholds, occlusion, left main, three vessels, `5 > 4B`
@@ -527,7 +575,7 @@ label format; prevalences matching the catalogue, `age_min` / `sex` gating, cap,
 exclusion, determinism; preamble and code-block cleaning, label tolerance, mentions
 of modifiers and findings; connection state and its failure path.
 
-123 tests, standard library only. They also run in continuous integration
+127 tests, standard library only. They also run in continuous integration
 (`.github/workflows/tests.yml`, Python 3.10 to 3.14): that is the proof that the
 imposed label follows the rules and that the draw is reproducible.
 

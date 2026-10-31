@@ -37,6 +37,46 @@ class TestConformance(unittest.TestCase):
                     seen[category] += 1
                 self.assertEqual(set(seen), {target}, f"target {target} produced {dict(seen)}")
 
+    def test_mono_mode_never_exceeds_one_lesion(self):
+        cfg = json.loads((ROOT / "settings.json").read_text(encoding="utf-8"))
+        cfg["generation"]["lesion_mode"] = "mono"
+        rng = random.Random(7)
+        for target in TARGETS:
+            for _ in range(DRAWS):
+                scenario = scenarios.build(rng, self.reference, target, cfg)
+                self.assertLessEqual(len(scenario["lesions"]), 1,
+                                     f"mono mode gave {len(scenario['lesions'])} lesions in {target}")
+                if target != "0":
+                    self.assertEqual(len(scenario["lesions"]), 1, f"mono mode lost the lesion in {target}")
+
+    def test_multi_mode_stays_within_one_and_three_lesions(self):
+        cfg = json.loads((ROOT / "settings.json").read_text(encoding="utf-8"))
+        cfg["generation"]["lesion_mode"] = "multi"
+        rng = random.Random(9)
+        sizes = set()
+        for target in TARGETS:
+            for _ in range(DRAWS):
+                scenario = scenarios.build(rng, self.reference, target, cfg)
+                n = len(scenario["lesions"])
+                sizes.add(n)
+                if target == "0":
+                    self.assertEqual(n, 0)
+                else:
+                    self.assertTrue(1 <= n <= 3, f"{target} gave {n} lesions")
+        self.assertTrue({1, 2, 3} <= sizes, f"multi mode never reached all sizes: {sizes}")
+
+    def test_lesions_always_sit_on_distinct_arteries(self):
+        for mode in ("mono", "multi"):
+            cfg = json.loads((ROOT / "settings.json").read_text(encoding="utf-8"))
+            cfg["generation"]["lesion_mode"] = mode
+            rng = random.Random(13)
+            for target in TARGETS:
+                for _ in range(100):
+                    scenario = scenarios.build(rng, self.reference, target, cfg)
+                    vessels = [l["vessel"] for l in scenario["lesions"]]
+                    self.assertEqual(len(vessels), len(set(vessels)),
+                                     f"{mode}/{target}: two lesions in the same artery {vessels}")
+
     def test_unknown_target_is_rejected(self):
         with self.assertRaises(ValueError):
             scenarios.build(random.Random(1), self.reference, "6", self.cfg)
