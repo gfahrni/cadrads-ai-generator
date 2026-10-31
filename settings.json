@@ -83,8 +83,9 @@
     ]
   },
   "export": {
-    "_doc": "Filename of the .txt files in reports/. Placeholders: {case_id} {cadrads} {lang} {style}.",
+    "_doc": "Filename of the .txt files in reports/. Placeholders: {case_id} {cadrads} {lang} {style}. write_xlsx writes dataset.xlsx, one row per report with every input field of the scenario.",
     "filename": "{case_id}_{cadrads}_{lang}",
-    "write_csv_index": true
+    "write_csv_index": true,
+    "write_xlsx": true
   }
 }

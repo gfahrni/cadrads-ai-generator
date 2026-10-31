@@ -71,6 +71,7 @@ DEFAULTS = {
     "export": {
         "filename": "{case_id}_{cadrads}_{lang}",
         "write_csv_index": True,
+        "write_xlsx": True,
     },
 }
 

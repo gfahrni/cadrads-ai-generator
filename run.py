@@ -398,6 +398,7 @@ def main(argv=None) -> int:
                           "error": session_error, "duration_s": round(time.time() - started, 1)}
     run.write_summary(summary)
     run.write_csv(records)
+    descriptor = run.write_dataset_descriptor(cases, records)
 
     if not args.quiet:
         checks = summary["automatic_checks"]
@@ -417,6 +418,8 @@ def main(argv=None) -> int:
         if summary["n_target_mismatch"]:
             print(f"  plan drift       : {summary['n_target_mismatch']} cases (see manifest)")
         print(f"  duration         : {round(time.time() - started, 1)}s")
+        if descriptor is not None:
+            print(f"  dataset      : {_rel(descriptor)}")
         print(f"  -> {_rel(run.dir)}")
         print()
 

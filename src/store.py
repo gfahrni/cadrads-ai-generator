@@ -13,7 +13,17 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from . import xlsx
+
 _UNSAFE = re.compile(r"[^A-Za-z0-9_.-]+")
+
+
+def _grade_of(case: dict, slot: int) -> str:
+    """CAD-RADS grade of the lesion at this position, from the plan when available."""
+    per_lesion = case.get("per_lesion") or []
+    if slot < len(per_lesion):
+        return per_lesion[slot]["cadrads"]
+    return ""
 
 
 def _safe(name: str) -> str:
@@ -165,6 +175,74 @@ class RunStore:
             writer.writerow(["case_id", "label", "language", "style", "prompt_sha", "file"])
             writer.writerows(rows)
         return len(rows)
+
+
+    # -- dataset descriptor ------------------------------------------------
+    DESCRIPTOR_COLUMNS = [
+        "case_id", "status", "file",
+        "cadrads", "target_cadrads", "target_ok", "label",
+        "plaque_burden", "modifiers", "n_lesions",
+        "lesion_1_vessel", "lesion_1_segment", "lesion_1_stenosis", "lesion_1_plaque", "lesion_1_cadrads",
+        "lesion_2_vessel", "lesion_2_segment", "lesion_2_stenosis", "lesion_2_plaque", "lesion_2_cadrads",
+        "lesion_3_vessel", "lesion_3_segment", "lesion_3_stenosis", "lesion_3_plaque", "lesion_3_cadrads",
+        "agatston", "age", "sex", "indication", "language", "style", "technique",
+        "stent_site", "graft_site", "vulnerable_site", "exception_site", "non_evaluable",
+        "incidental", "words", "label_ok", "modifiers_ok", "incidental_ok",
+        "attempts", "latency_s", "model", "prompt_sha",
+    ]
+
+    def write_dataset_descriptor(self, cases, records):
+        """One row per report: every input field of the scenario, plus the outcome.
+
+        Written as a real .xlsx (no dependency), next to the CSV index. This is the
+        file to open in a spreadsheet to check the corpus composition.
+        """
+        if not self.cfg["export"].get("write_xlsx", True):
+            return None
+
+        latest = {}
+        for record in records:
+            latest[record["case_id"]] = record
+
+        rows = []
+        for case in cases:
+            record = latest.get(case["case_id"])
+            if record is None:
+                continue
+            checks = record.get("checks", {}).get("results", {})
+            lesions = case["lesions"]
+            row = [
+                case["case_id"], record.get("status", ""), record.get("file", ""),
+                case["cadrads"], case["target_cadrads"], case["target_ok"], case["label"],
+                case["plaque_burden"] or "", "|".join(case["modifiers"]), len(lesions),
+            ]
+            for slot in range(3):
+                if slot < len(lesions):
+                    lesion = lesions[slot]
+                    row += [lesion["vessel"], lesion["segment"], lesion["stenosis_pct"],
+                            lesion["plaque"], _grade_of(case, slot)]
+                else:
+                    row += ["", "", "", "", ""]
+            row += [
+                case["agatston"], case["age"], case["sex"], case["indication"],
+                case["language"], case["style"], case["technique"],
+                case["stent_site"] or "", case["graft_site"] or "",
+                case["vulnerable_site"] or "", case["exception_site"] or "",
+                "; ".join(case["non_evaluable"]),
+                "|".join(f["id"] for f in case.get("incidental") or []),
+                checks.get("length", {}).get("words", ""),
+                checks.get("label", {}).get("ok", ""),
+                checks.get("modifiers", {}).get("ok", ""),
+                checks.get("incidental", {}).get("ok", ""),
+                record.get("meta", {}).get("attempts", ""),
+                record.get("meta", {}).get("latency_s", ""),
+                record.get("meta", {}).get("model", ""),
+                record.get("meta", {}).get("prompt_sha", ""),
+            ]
+            rows.append(row)
+
+        return xlsx.write(self.dir / "dataset.xlsx", self.DESCRIPTOR_COLUMNS, rows,
+                          sheet_name="dataset", widths={"technique": 42, "label": 22, "file": 34})
 
     def write_raw(self, case_id: str, payload: dict) -> None:
         path = self.raw_dir / f"{_safe(case_id)}.json"

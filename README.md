@@ -5,7 +5,7 @@ research on large language models. No patient data, no external dependency
 (Python 3.10+ standard library only).
 
 > **Status**: plumbing, plan, classification engine and checks are tested
-> (140 tests, run in CI). The real call goes through the `opencode` CLI (see
+> (147 tests, run in CI). The real call goes through the `opencode` CLI (see
 > "Connecting opencode"); it could not be validated in the development
 > environment. Only `backend: http_api` remains a placeholder.
 
@@ -136,7 +136,7 @@ cadrads-generator/            (repository root)
 │   ├── auth.py            opencode connection + call probe
 │   ├── validate.py        cleaning and automatic checks
 │   └── store.py           manifest, resume, export
-└── tests/                 140 tests, stdlib only
+└── tests/                 147 tests, stdlib only
 ```
 
 The files in `src/` are not meant to be edited by hand: all tuning happens through
@@ -173,6 +173,7 @@ the program with a message listing the allowed values.
 | `checks` | `label_integrity` / `modifier_mention` / `incidental_mention` | `fail` / `warn` / `warn` | `fail` excludes, `warn` flags, `off` ignores |
 | `checks` | `min_words` / `max_words` | `35` / `800` | accepted length |
 | `export` | `filename` | `"{case_id}_{cadrads}_{lang}"` | name of the `.txt` files |
+| `export` | `write_xlsx` | `true` | write `dataset.xlsx`, one row per report |
 
 Every key also carries its explanation inside the file (`_doc`), so
 `settings.json` stays readable without coming back here.
@@ -450,7 +451,8 @@ out/<run_id>/
 ├── reports_rejected/     .txt excluded by an automatic check
 ├── raw/<case_id>.json    full prompt + raw response + checks + trace
 ├── manifest.jsonl        one JSON line per attempt (register + audit)
-├── reports_index.csv     table ready to open
+├── dataset.xlsx          one row per report: every input field of the scenario
+├── reports_index.csv     same idea, comma separated
 ├── summary.json          counts per stratum, checks, plan drift
 ├── run.json              identifier + config fingerprint (guard)
 ├── settings.snapshot.json  exact configuration used
@@ -567,6 +569,7 @@ python3 tests/test_cli.py          # 14 tests  — flags, exclusivity, export, p
 python3 tests/test_config.py       #  8 tests  — model rewrite, indication values
 python3 tests/test_plan_invariants.py  # 43 tests  — "X impossible when Y" over 2000 cases
 python3 tests/test_scenarios.py    # 13 tests  — per-category trees, mono/multi, distinct arteries
+python3 tests/test_xlsx.py         #  6 tests  — xlsx writer and dataset descriptor
 ```
 
 They cover: stenosis thresholds, occlusion, left main, three vessels, `5 > 4B`
@@ -575,7 +578,7 @@ label format; prevalences matching the catalogue, `age_min` / `sex` gating, cap,
 exclusion, determinism; preamble and code-block cleaning, label tolerance, mentions
 of modifiers and findings; connection state and its failure path.
 
-140 tests, standard library only. They also run in continuous integration
+147 tests, standard library only. They also run in continuous integration
 (`.github/workflows/tests.yml`, Python 3.10 to 3.14): that is the proof that the
 imposed label follows the rules and that the draw is reproducible.
 
