@@ -102,8 +102,17 @@ class TestBurden(unittest.TestCase):
         self.assertEqual(classify(trois)["plaque_burden"], "P3")
 
     def test_burden_is_not_tied_to_the_category(self):
-        # a single occlusion is a small total burden: the category must not force P3
-        self.assertEqual(classify([lesion("RCA", 100)])["plaque_burden"], "P1")
+        # the burden follows the plaque amount, not the category
+        self.assertEqual(classify([lesion("RCA", 100)])["plaque_burden"], "P2")
+
+    def test_small_plaques_never_get_a_severe_burden(self):
+        # three plaques under 50 % score 3: that is P2, not "severe"
+        petits = [lesion("LAD", 8), lesion("LCX", 6), lesion("RCA", 20)]
+        self.assertEqual(classify(petits)["plaque_burden"], "P2")
+
+    def test_three_occlusions_reach_p4(self):
+        occlusions = [lesion("LAD", 100), lesion("LCX", 100), lesion("RCA", 100)]
+        self.assertEqual(classify(occlusions)["plaque_burden"], "P4")
 
     def test_no_burden_when_category_is_n(self):
         result = classify([], non_evaluable=["RCA mid"])

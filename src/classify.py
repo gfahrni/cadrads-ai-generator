@@ -19,7 +19,13 @@ MODIFIER_ORDER = ("N", "S", "G", "E", "V")
 # stenosis grade but the impossibility of grading.
 LESION_ORDER = {"0": 0, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5}
 
-BURDEN_BY_EXTENT = {0: None, 1: "P1", 2: "P2", 3: "P3"}
+# Weight of one lesion in the burden score: a non-obstructive plaque counts once, an
+# obstructive one twice, an occlusion three times. A raw vessel count overstated the
+# burden (three plaques at 8 %, 6 % and 20 % were labelled "severe").
+BURDEN_WEIGHT = {"non-obstructive": 1, "obstructive": 2, "occlusion": 3}
+
+# Bands of the total score.
+BURDEN_BANDS = ((2, "P1"), (4, "P2"), (6, "P3"))
 
 
 # --------------------------------------------------------------------------
@@ -102,14 +108,36 @@ def classify_category(lesions, non_evaluable=()) -> tuple:
 # --------------------------------------------------------------------------
 # Plaque burden, modifiers, label
 # --------------------------------------------------------------------------
-def plaque_burden_for(lesions):
-    """P value implied by the extent of the disease (number of diseased vessels).
+def burden_score(lesions) -> int:
+    """Total plaque score: 1 per non-obstructive lesion, 2 per obstructive, 3 per occlusion."""
+    score = 0
+    for lesion in lesions:
+        stenosis = int(lesion["stenosis_pct"])
+        if stenosis >= 100:
+            score += BURDEN_WEIGHT["occlusion"]
+        elif stenosis >= 50:
+            score += BURDEN_WEIGHT["obstructive"]
+        elif stenosis >= 1:
+            score += BURDEN_WEIGHT["non-obstructive"]
+    return score
 
-    P4 (extensive) needs four or more diseased vessels; the scenario models at most
-    four, so P4 stays exceptional. That is documented rather than faked.
+
+def plaque_burden_for(lesions):
+    """P value implied by the amount of plaque: a weighted score, not a vessel count.
+
+    Examples: one 80 % lesion (score 2) -> P1, as in Figure 7 of the consensus;
+    three plaques at 8 %, 6 % and 20 % (score 3) -> P2, not "severe"; three
+    occlusions (score 9) -> P4. The consensus defines P semi-quantitatively (SIS,
+    calcium score); this weighted score is an explicit approximation, documented as
+    such.
     """
-    n_vessels = len({l["vessel"] for l in lesions if int(l["stenosis_pct"]) > 0})
-    return BURDEN_BY_EXTENT.get(min(n_vessels, 3), "P3")
+    score = burden_score(lesions)
+    if score <= 0:
+        return None
+    for ceiling, label in BURDEN_BANDS:
+        if score <= ceiling:
+            return label
+    return "P4"
 
 
 def plaque_burden_choices(category: str, lesions) -> list:

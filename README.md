@@ -5,7 +5,7 @@ research on large language models. No patient data, no external dependency
 (Python 3.10+ standard library only).
 
 > **Status**: plumbing, plan, classification engine and checks are tested
-> (133 tests, run in CI). The real call goes through the `opencode` CLI (see
+> (137 tests, run in CI). The real call goes through the `opencode` CLI (see
 > "Connecting opencode"); it could not be validated in the development
 > environment. Only `backend: http_api` remains a placeholder.
 
@@ -136,7 +136,7 @@ cadrads-generator/            (repository root)
 │   ├── auth.py            opencode connection + call probe
 │   ├── validate.py        cleaning and automatic checks
 │   └── store.py           manifest, resume, export
-└── tests/                 133 tests, stdlib only
+└── tests/                 137 tests, stdlib only
 ```
 
 The files in `src/` are not meant to be edited by hand: all tuning happens through
@@ -559,13 +559,13 @@ to the generation order that reintroduces a contradiction fails the build.
 ## Tests
 
 ```bash
-python3 tests/test_classify.py     # 19 tests  — CAD-RADS rules
+python3 tests/test_classify.py     # 21 tests  — CAD-RADS rules
 python3 tests/test_incidental.py   # 16 tests  — prevalences, gating, cap
 python3 tests/test_validate.py     # 16 tests  — cleaning and checks
 python3 tests/test_auth.py         # 10 tests  — connection state, failure path, fast-fail
 python3 tests/test_cli.py          # 14 tests  — flags, exclusivity, export, picker, reload
 python3 tests/test_config.py       #  8 tests  — model rewrite, indication values
-python3 tests/test_plan_invariants.py  # 37 tests  — "X impossible when Y" over 2000 cases
+python3 tests/test_plan_invariants.py  # 40 tests  — "X impossible when Y" over 2000 cases
 python3 tests/test_scenarios.py    # 13 tests  — per-category trees, mono/multi, distinct arteries
 ```
 
@@ -575,7 +575,7 @@ label format; prevalences matching the catalogue, `age_min` / `sex` gating, cap,
 exclusion, determinism; preamble and code-block cleaning, label tolerance, mentions
 of modifiers and findings; connection state and its failure path.
 
-133 tests, standard library only. They also run in continuous integration
+137 tests, standard library only. They also run in continuous integration
 (`.github/workflows/tests.yml`, Python 3.10 to 3.14): that is the proof that the
 imposed label follows the rules and that the draw is reproducible.
 
@@ -604,11 +604,13 @@ imposed label follows the rules and that the draw is reproducible.
 - **`5 > 4B` precedence**: when an occlusion and a left main lesion coexist, the
   higher category is kept. That is a convention; change it on one line in
   `classify_category` if you prefer the opposite.
-- **Plaque burden is derived from extent only**: 1 diseased vessel → P1, 2 → P2,
-  3 → P3. The consensus does not tie `P` to the CAD-RADS category, and tying it
-  produced overreach ("severe burden" on a single 32 % plaque). Consequence: **P4
-  never occurs**, because the scenario models at most three diseased vessels. That is
-  documented rather than faked.
+- **Plaque burden uses a weighted score**: 1 point for a non-obstructive lesion,
+  2 for an obstructive one, 3 for an occlusion; P1 ≤ 2, P2 ≤ 4, P3 ≤ 6, P4 above.
+  A raw vessel count overstated the burden (three plaques at 8 %, 6 % and 20 % came
+  out as "severe"), and tying `P` to the CAD-RADS category overstated it further.
+  One 80 % lesion scores 2 → **P1**, as in Figure 7 of the consensus. The consensus
+  defines `P` semi-quantitatively (SIS, calcium score); this weighted score is an
+  explicit approximation, not the guideline's own formula.
 - **Simplified anatomy**: no dominance, no collaterals, no segmental calcium score,
   no CT-FFR. The calcium score is derived from the described plaques and biased by
   age, not modelled segment by segment.

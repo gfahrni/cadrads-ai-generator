@@ -58,7 +58,7 @@ EXCEPTIONS = [
     "anomalous origin of the right coronary artery from the left coronary sinus",
     "myocardial bridge of the mid LAD",
     "coronary artery fistula from the LAD to the pulmonary artery",
-    "fusiform aneurysm of the proximal RCA",
+    "fusiform aneurysm of the proximal RCA, 9 mm in diameter",
 ]
 
 # Minimal acquisition context, so the "Technique" section need not be invented.
@@ -207,13 +207,21 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
         if "G" in classified["modifiers"]:
             surgical = [l for l in lesions
                         if l["stenosis_pct"] >= (50 if l["vessel"] == "LM" else 70)]
-            if surgical:
-                graft_target = rng.choice(surgical)
+            # A bypass lands DISTAL to the stenosis, never on it: keep only the
+            # lesions that still have a segment downstream.
+            candidates = []
+            for lesion in surgical:
+                segments = reference["vessels"][lesion["vessel"]]
+                index = segments.index(lesion["segment"])
+                if index + 1 < len(segments):
+                    candidates.append((lesion, segments[index + 1]))
+            if candidates:
+                graft_target, distal_segment = rng.choice(candidates)
                 conduit = GRAFT_CONDUIT.get(graft_target["vessel"], "bypass graft")
                 if graft_target["vessel"] == "LM":
-                    graft_site = f"{conduit} to the left main"
+                    graft_site = f"{conduit} to the distal left main"
                 else:
-                    graft_site = (f"{conduit} to the {graft_target['segment']} "
+                    graft_site = (f"{conduit} to the {distal_segment} "
                                   f"{graft_target['vessel']}")
 
         # 7. V designates a soft plaque, E names an abnormality

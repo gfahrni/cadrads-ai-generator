@@ -108,10 +108,18 @@ class PlanInvariants(unittest.TestCase):
                 self.assertNotIn(case["vulnerable_site"], occluded,
                                  f"{case['case_id']}: V on a total occlusion")
 
-    def test_no_graft_without_a_significant_lesion(self):
+    def test_a_graft_is_never_silently_dropped_when_a_lesion_allows_it(self):
+        # G may be dropped when the only significant lesion sits in the most distal
+        # segment (no segment downstream to anastomose to), but not otherwise.
         for case in self.cases:
-            if "G" in case["modifiers"]:
-                self.assertTrue(case["graft_site"], f"{case['case_id']}: G declared but no graft placed")
+            if "G" not in case["modifiers"] or case["graft_site"]:
+                continue
+            segments = {"proximal": 0, "mid": 1, "distal": 2}
+            graftable = [l for l in case["lesions"]
+                         if l["stenosis_pct"] >= (50 if l["vessel"] == "LM" else 70)
+                         and segments.get(l["segment"], 2) < 2]
+            self.assertEqual(graftable, [],
+                             f"{case['case_id']}: G dropped although {graftable} could be bypassed")
 
     def test_vulnerable_plaque_designates_a_soft_lesion(self):
         for case in self.cases:
@@ -180,10 +188,27 @@ class PlanInvariants(unittest.TestCase):
                              f"{case['case_id']}: P does not follow the extent")
 
     def test_no_high_burden_on_a_single_vessel(self):
+        # one vessel scores at most 3 (an occlusion): P1 or P2, never P3
         for case in self.cases:
             if len({l["vessel"] for l in case["lesions"]}) == 1:
-                self.assertIn(case["plaque_burden"], (None, "P1"),
+                self.assertIn(case["plaque_burden"], (None, "P1", "P2"),
                               f"{case['case_id']}: {case['plaque_burden']} on one vessel")
+
+    def test_small_plaques_never_get_a_severe_burden(self):
+        for case in self.cases:
+            if case["plaque_burden"] in ("P3", "P4"):
+                self.assertTrue(any(l["stenosis_pct"] >= 50 for l in case["lesions"]),
+                                f"{case['case_id']}: {case['plaque_burden']} with only sub-50% plaques")
+
+    def test_graft_lands_distal_to_the_stenosis(self):
+        """A bypass goes downstream of the stenosis, never onto it."""
+        for case in self.cases:
+            if not case["graft_site"]:
+                continue
+            for lesion in case["lesions"]:
+                same = lesion["vessel"] in case["graft_site"] and lesion["segment"] in case["graft_site"]
+                self.assertFalse(same and lesion["stenosis_pct"] >= 50,
+                                 f"{case['case_id']}: graft on the stenosed segment ({case['graft_site']})")
 
     # -- label -------------------------------------------------------------
     def test_every_lesion_stays_at_or_below_the_final_category(self):
