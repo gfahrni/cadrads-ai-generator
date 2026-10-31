@@ -16,6 +16,17 @@ import subprocess
 import time
 
 
+# Error markers that will not resolve by retrying (wrong model id, bad key, ...).
+PERMANENT_ERRORS = (
+    "model unavailable",
+    "not found",
+    "unauthorized",
+    "invalid api key",
+    "authentication",
+    "no such model",
+)
+
+
 class ClientError(Exception):
     """Fatal error (configuration, missing binary) — immediate stop."""
 
@@ -120,8 +131,10 @@ class OpencodeClient:
 
     def generate(self, prompt: str, case: dict) -> LLMResult:
         last_error = "unknown error"
+        attempts_made = 0
         started = time.time()
         for attempt in range(1, self.retries + 2):
+            attempts_made = attempt
             try:
                 argv = self._argv(prompt)
                 if argv is None:
@@ -143,9 +156,12 @@ class OpencodeClient:
                 last_error = f"timeout after {self.timeout:.0f}s"
             except Exception as exc:  # noqa: BLE001 - everything is logged
                 last_error = str(exc)
+            # Deterministic errors will not become true by retrying: fail fast.
+            if any(marker in last_error.lower() for marker in PERMANENT_ERRORS):
+                break
             if attempt <= self.retries:
                 time.sleep(self.backoff * attempt)
-        return LLMResult("", last_error, self.retries + 1, time.time() - started, "opencode", self.model)
+        return LLMResult("", last_error, attempts_made, time.time() - started, "opencode", self.model)
 
 
 # --------------------------------------------------------------------------

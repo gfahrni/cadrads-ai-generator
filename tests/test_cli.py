@@ -77,6 +77,40 @@ class TestDocumentation(unittest.TestCase):
         self.assertIn("--dry-run | --plan-only | --show-prompt | --prompt-only", help_txt)
 
 
+class TestMenuReloadsSettings(unittest.TestCase):
+    """Regression: after a model change the header and the test kept the old model."""
+
+    def test_header_and_settings_follow_the_pick(self):
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cfg = json.loads((ROOT / "settings.json").read_text(encoding="utf-8"))
+            cfg["llm"]["command"] = ["opencode", "run", "--model", "opencode/grok-code", "{prompt}"]
+            cfg["llm"]["model_label"] = "opencode/grok-code"
+            (tmp_path / "settings.json").write_text(json.dumps(cfg), encoding="utf-8")
+
+            models_text = "\n".join([f"p/m{i}" for i in range(1, 40)] + ["opencode/deepseek-free"])
+            fake_stdin = mock.Mock()
+            fake_stdin.isatty.return_value = True
+
+            with mock.patch.object(login, "ROOT", tmp_path), \
+                    mock.patch.object(login.auth, "models", return_value=(0, models_text)), \
+                    mock.patch.object(login.auth, "auth_list", return_value=(0, "OpenCode Console  Personal  stored")), \
+                    mock.patch.object(login.auth, "state_path", return_value=tmp_path / "none.json"), \
+                    mock.patch.object(login.sys, "stdin", fake_stdin), \
+                    mock.patch("builtins.input", side_effect=["2", "opencode/deepseek", "40", "y", "5"]), \
+                    contextlib.redirect_stdout(io.StringIO()) as out:
+                login.main()
+
+            written = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
+            self.assertEqual(written["llm"]["command"][-2], "opencode/deepseek-free")
+            self.assertTrue(written["llm"]["model_label"].startswith("opencode/deepseek-free@"))
+            # the header rendered after the change must show the new model
+            last_header = out.getvalue().split("CAD-RADS generator  --  connection")[-1]
+            self.assertIn("opencode/deepseek-free", last_header)
+
+
 class TestModelPicker(unittest.TestCase):
     """The picker must reach any model, not only the ones displayed."""
 

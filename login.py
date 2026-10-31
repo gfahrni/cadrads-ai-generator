@@ -285,6 +285,12 @@ def main() -> int:
     }
 
     while True:
+        # Reload on every iteration: after a model change, and after a manual edit
+        # of settings.json in another window, the header and the test must reflect
+        # the current file, not the state captured at startup.
+        fresh = _load_config()
+        if fresh is not None:
+            cfg = fresh
         show_state(cfg)
         for key, (label, _) in actions.items():
             print(f"  {key}) {label}")

@@ -5,7 +5,7 @@ research on large language models. No patient data, no external dependency
 (Python 3.10+ standard library only).
 
 > **Status**: plumbing, plan, classification engine and checks are tested
-> (77 tests, run in CI). The real call goes through the `opencode` CLI (see
+> (80 tests, run in CI). The real call goes through the `opencode` CLI (see
 > "Connecting opencode"); it could not be validated in the development
 > environment. Only `backend: http_api` remains a placeholder.
 
@@ -135,7 +135,7 @@ cadrads-generator/            (repository root)
 │   ├── auth.py            opencode connection + call probe
 │   ├── validate.py        cleaning and automatic checks
 │   └── store.py           manifest, resume, export
-└── tests/                 77 tests, stdlib only
+└── tests/                 80 tests, stdlib only
 ```
 
 The files in `src/` are not meant to be edited by hand: all tuning happens through
@@ -483,8 +483,8 @@ incoherent: that is precisely the role of the expert readers.
 python3 tests/test_classify.py     # 18 tests  — CAD-RADS rules
 python3 tests/test_incidental.py   # 16 tests  — prevalences, gating, cap
 python3 tests/test_validate.py     # 16 tests  — cleaning and checks
-python3 tests/test_auth.py         #  8 tests  — connection state, failure path
-python3 tests/test_cli.py          # 13 tests  — flags, exclusivity, export, model picker
+python3 tests/test_auth.py         # 10 tests  — connection state, failure path, fast-fail
+python3 tests/test_cli.py          # 14 tests  — flags, exclusivity, export, picker, reload
 python3 tests/test_config.py       #  6 tests  — rewriting the model in settings.json
 ```
 
@@ -494,7 +494,7 @@ label format; prevalences matching the catalogue, `age_min` / `sex` gating, cap,
 exclusion, determinism; preamble and code-block cleaning, label tolerance, mentions
 of modifiers and findings; connection state and its failure path.
 
-77 tests, standard library only. They also run in continuous integration
+80 tests, standard library only. They also run in continuous integration
 (`.github/workflows/tests.yml`, Python 3.10 to 3.14): that is the proof that the
 imposed label follows the rules and that the draw is reproducible.
 

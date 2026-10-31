@@ -68,6 +68,52 @@ class TestState(unittest.TestCase):
         json.dumps(state)
 
 
+class TestPermanentErrors(unittest.TestCase):
+    """A wrong model id must not be retried: retrying wastes 24 s per failure."""
+
+    def test_no_retry_on_model_unavailable(self):
+        import time
+
+        from src import llm_client
+
+        cfg = {
+            "llm": {
+                "backend": "opencode",
+                "command": ["sh", "-c", "echo 'Error: Model unavailable: foo' >&2; exit 1"],
+                "model_label": "x",
+                "timeout_s": 5,
+                "retries": 2,
+                "retry_backoff_s": 8,
+            }
+        }
+        client = llm_client.get_client(cfg)
+        started = time.time()
+        result = client.generate("hello", {})
+        elapsed = time.time() - started
+
+        self.assertFalse(result.ok)
+        self.assertIn("Model unavailable", result.error)
+        self.assertEqual(result.attempts, 1)          # no retry
+        self.assertLess(elapsed, 5)                    # no 8 s + 16 s backoff
+
+    def test_transient_error_is_retried(self):
+        from src import llm_client
+
+        cfg = {
+            "llm": {
+                "backend": "opencode",
+                "command": ["sh", "-c", "exit 1"],
+                "model_label": "x",
+                "timeout_s": 5,
+                "retries": 2,
+                "retry_backoff_s": 0,
+            }
+        }
+        result = llm_client.get_client(cfg).generate("hello", {})
+        self.assertFalse(result.ok)
+        self.assertEqual(result.attempts, 3)          # 1 + 2 retries
+
+
 class TestProbe(unittest.TestCase):
     def test_dry_run_is_skipped(self):
         result = auth.probe(fake_cfg(backend="dry_run"))
