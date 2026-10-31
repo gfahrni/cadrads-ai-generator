@@ -484,7 +484,7 @@ burden, format du label ; prévalences conformes au catalogue, respect de
 blocs de code, tolérance du label, mention des modificateurs et des découvertes.
 
 65 tests, stdlib uniquement. Ils tournent aussi en intégration continue
-(`.github/workflows/tests.yml`, Python 3.10 à 3.13) : c'est la preuve que le label
+(`.github/workflows/tests.yml`, Python 3.10 à 3.14) : c'est la preuve que le label
 imposé est conforme et que le tirage est reproductible.
 
 ---
