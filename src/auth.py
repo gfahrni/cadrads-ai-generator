@@ -1,13 +1,13 @@
-"""Authentification opencode et verification de la connexion.
+"""opencode authentication and connection verification.
 
-Ce module ne gere AUCUN identifiant : opencode garde les cles dans
-~/.local/share/opencode/auth.json. Ici on se contente de :
+This module handles NO credential: opencode keeps the keys in
+~/.local/share/opencode/auth.json. Here we only:
 
-  1. lancer les commandes d'authentification d'opencode ;
-  2. verifier par un appel reel, minimal, que la chaine fonctionne (probe) ;
-  3. memoriser le resultat dans .state/login.json — cache d'affichage, pas un secret.
+  1. run opencode's own authentication commands;
+  2. verify with a real, minimal call that the chain works (probe);
+  3. remember the result in .state/login.json — a display cache, not a secret.
 
-Aucune cle n'est ecrite, lue ni journalisee par ce module.
+No key is ever written, read or logged by this module.
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ PROBE_PROMPT = "Reply with exactly this single line and nothing else: PROBE-OK"
 STATE_RELATIVE = Path(".state") / "login.json"
 
 
-# --- etat local (cache d'affichage) ---------------------------------------
+# --- local state (display cache) ------------------------------------------
 
 def state_path(root: Path) -> Path:
     return Path(root) / STATE_RELATIVE
@@ -50,7 +50,7 @@ def clear_state(root: Path) -> None:
         path.unlink()
 
 
-# --- interactions avec le CLI opencode ------------------------------------
+# --- interactions with the opencode CLI -----------------------------------
 
 def binary(cfg: dict) -> str:
     return str(cfg["llm"]["command"][0])
@@ -61,11 +61,11 @@ def available(cfg: dict) -> bool:
 
 
 def run_interactive(args) -> int:
-    """Commande interactive : on laisse opencode piloter son propre ecran."""
+    """Interactive command: opencode drives its own screen."""
     try:
         return subprocess.run(args, check=False).returncode
     except OSError as exc:
-        print(f"  ! impossible de lancer {args[0]} : {exc}")
+        print(f"  ! cannot launch {args[0]}: {exc}")
         return 127
 
 
@@ -74,7 +74,7 @@ def capture(args, timeout: float = 60.0) -> tuple:
         proc = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
         return proc.returncode, ((proc.stdout or "") + (proc.stderr or "")).strip()
     except subprocess.TimeoutExpired:
-        return 124, f"timeout apres {timeout:.0f}s"
+        return 124, f"timeout after {timeout:.0f}s"
     except OSError as exc:
         return 127, str(exc)
 
@@ -95,10 +95,10 @@ def auth_logout(cfg: dict) -> int:
     return run_interactive([binary(cfg), "auth", "logout"])
 
 
-# --- verification reelle ---------------------------------------------------
+# --- real verification -----------------------------------------------------
 
 def _probe_case() -> dict:
-    """Cas factice minimal, pour les clients qui attendent un cas complet."""
+    """Minimal fake case, for the clients that expect a complete case."""
     return {
         "case_id": "PROBE", "cadrads": "0", "label": "CAD-RADS 0",
         "lesions": [], "modifiers": [], "plaque_burden": None, "non_evaluable": [],
@@ -110,11 +110,11 @@ def _probe_case() -> dict:
 
 
 def probe(cfg: dict) -> dict:
-    """Un appel reel et minimal : la seule preuve que la chaine fonctionne.
+    """One real, minimal call: the only proof that the chain works.
 
-    Critere de succes : exit 0 et sortie non vide. La presence du marqueur
-    PROBE-OK est rapportee a part (`marker_found`), comme indicateur de proprete
-    de la sortie : un agent peut ajouter du texte, ce n'est pas un echec.
+    Success criterion: exit code 0 and non-empty output. The presence of the
+    PROBE-OK marker is reported separately (`marker_found`), as an indicator of
+    output cleanliness: an agent may add text, which is not a failure.
     """
     if cfg["llm"]["backend"] == "dry_run":
         return {"ok": True, "skipped": True, "latency_s": 0.0, "sample": "",
@@ -145,7 +145,7 @@ def probe(cfg: dict) -> dict:
 
 
 def build_state(cfg: dict, probe_result: dict, auth_exit: int | None = None) -> dict:
-    """Etat a persister : que des metadonnees, jamais de secret."""
+    """State to persist: metadata only, never a secret."""
     return {
         "verified_at": datetime.now().isoformat(timespec="seconds"),
         "probe_ok": bool(probe_result.get("ok")),

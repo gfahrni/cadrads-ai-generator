@@ -1,15 +1,14 @@
-"""Construction du plan de generation.
+"""Building the generation plan.
 
-Trois responsabilites :
-1. Tirer les cas de facon reproductible (seed) et stratifiee par categorie visee.
-2. Transformer chaque cas en SCENARIO CLINIQUE complet et coherent.
-3. Faire CALCULER le label CAD-RADS par src/classify.py a partir des lesions.
+Three responsibilities:
+1. Draw the cases reproducibly (seed) and stratified by target category.
+2. Turn each case into a complete, consistent CLINICAL SCENARIO.
+3. Have the CAD-RADS label COMPUTED by src/classify.py from the lesions.
 
-Point cle : le label n'est jamais laisse a l'appreciation du LLM. La categorie
-visee sert a generer un scenario plausible, puis la categorie REELLE est
-recalculee a partir des lesions. Si les deux divergent, on garde la valeur
-calculee (source de verite) et on le signale : c'est une mesure de derive du
-plan, utile pour le papier.
+Key point: the label is never left to the LLM's judgement. The target category is
+used to generate a plausible scenario, then the REAL category is recomputed from
+the lesions. If the two diverge, the computed value wins (source of truth) and the
+divergence is reported: this is a plan-drift metric, useful for the paper.
 """
 from __future__ import annotations
 
@@ -22,7 +21,7 @@ CADRADS_ORDER = ["0", "1", "2", "3", "4A", "4B", "5"]
 
 PLAQUE_TYPES = ["calcified", "mixed", "non-calcified"]
 
-# Calcium coherent avec le burden (ordre de grandeur Agatston).
+# Calcium consistent with the burden (Agatston order of magnitude).
 AGATSTON_BY_BURDEN = {
     "P1": (1, 100),
     "P2": (100, 300),
@@ -34,7 +33,7 @@ GRAFTS = ["LIMA to LAD", "RIMA to RCA", "saphenous vein graft to LCX"]
 
 
 def allocate(n: int, weights: dict) -> dict:
-    """Repartit n cas selon les poids, par plus forts restes (total exact)."""
+    """Spread n cases over the weights, largest remainder (exact total)."""
     total = sum(weights.values())
     exact = {k: n * v / total for k, v in weights.items()}
     counts = {k: int(v) for k, v in exact.items()}
@@ -59,7 +58,7 @@ def _lesion(rng, reference, vessel, stenosis_pct):
 
 
 def _lesions_for(rng, reference, cadrads):
-    """Scenario lesionnel coherent avec la categorie visee."""
+    """Lesion scenario consistent with the target category."""
     if cadrads == "0":
         return []
 
@@ -74,18 +73,18 @@ def _lesions_for(rng, reference, cadrads):
         return [_lesion(rng, reference, rng.choice(["LAD", "LCX", "RCA"]), rng.randint(50, 69))]
 
     if cadrads == "4A":
-        # 1 ou 2 vaisseaux a 70-99 %, sans tronc commun, sans 3 vaisseaux.
+        # 1 or 2 vessels at 70-99 %, no left main, no three-vessel disease.
         vessels = rng.sample(["LAD", "LCX", "RCA"], k=rng.choice([1, 1, 2]))
         return [_lesion(rng, reference, v, rng.randint(70, 99)) for v in vessels]
 
     if cadrads == "4B":
-        # Soit tronc commun >= 50 %, soit 3 vaisseaux >= 70 %.
+        # Either left main >= 50 %, or three vessels >= 70 %.
         if rng.random() < 0.5:
             return [_lesion(rng, reference, "LM", rng.randint(50, 99)),
                     _lesion(rng, reference, rng.choice(["LAD", "LCX"]), rng.randint(70, 99))]
         return [_lesion(rng, reference, v, rng.randint(70, 99)) for v in ("LAD", "LCX", "RCA")]
 
-    # CAD-RADS 5 : au moins une occlusion totale
+    # CAD-RADS 5: at least one total occlusion
     occluded = rng.choice(["LAD", "LCX", "RCA"])
     lesions = [_lesion(rng, reference, occluded, 100)]
     if rng.random() < 0.5:
@@ -95,12 +94,12 @@ def _lesions_for(rng, reference, cadrads):
 
 
 def _pick_modifiers(rng, target, weights):
-    """Tirage des modificateurs.
+    """Draw the modifiers.
 
-    - S, G et V supposent une atherosclerose : impossibles en CAD-RADS 0.
-    - N est exclu pour les cibles 0/1/2 : un segment non diagnostique associe a
-      une stenose < 50 % reclasse le cas en CAD-RADS N (regle 1 du moteur), ce
-      qui ferait deriver la distribution demandee.
+    - S, G and V imply atherosclerosis: impossible in CAD-RADS 0.
+    - N is excluded for targets 0/1/2: a non-diagnostic segment combined with a
+      stenosis < 50 % reclassifies the case as CAD-RADS N (rule 1 of the engine),
+      which would shift the requested distribution.
     """
     chosen = []
     for modifier, weight in weights.items():
@@ -116,7 +115,7 @@ def _pick_modifiers(rng, target, weights):
 
 
 def _non_evaluable(rng, reference, lesions):
-    """Un segment non diagnostique, sur un vaisseau sans lesion severe."""
+    """A non-diagnostic segment, on a vessel without a severe lesion."""
     severe = {l["vessel"] for l in lesions if l["stenosis_pct"] >= 50}
     candidates = [v for v in reference["vessels"] if v not in severe]
     if not candidates:
@@ -133,8 +132,8 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
     counts = allocate(run["n_reports"], gen["cadrads_weights"])
     order = [c for c in CADRADS_ORDER if counts.get(c, 0) > 0]
 
-    # Ordre interleave : evite des blocs de cas identiques, et une derive de
-    # style si le modele "s'echauffe" au fil de la session.
+    # Interleaved order: avoids blocks of identical cases, and a style drift if the
+    # model "warms up" over the session.
     queue = []
     for category in order:
         queue.extend([category] * counts[category])
@@ -159,7 +158,7 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
         modifiers = _pick_modifiers(rng, target, gen["modifier_weights"])
         non_evaluable = _non_evaluable(rng, reference, lesions) if "N" in modifiers else []
 
-        # --- calcul du label (source de verite) ---------------------------
+        # --- label computation (source of truth) --------------------------
         category, _ = rules.classify_category(lesions, non_evaluable)
         choices = rules.plaque_burden_choices(category, lesions)
         burden = rng.choice(choices) if choices else None
@@ -167,11 +166,11 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
 
         if classified["category"] != target:
             classified["trace"].append(
-                f"ATTENTION : categorie visee {target} mais categorie calculee "
-                f"{classified['category']} — la valeur calculee est retenue"
+                f"WARNING: target category {target} but computed category "
+                f"{classified['category']} — the computed value is kept"
             )
 
-        # --- calcium coherent avec le burden ------------------------------
+        # --- calcium consistent with the burden ----------------------------
         if classified["plaque_burden"]:
             low, high = AGATSTON_BY_BURDEN.get(classified["plaque_burden"], (0, 100))
             agatston = rng.randint(low, high)
@@ -184,7 +183,7 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
             stent_site = f"{site['vessel']} {site['segment']}"
         graft_site = rng.choice(GRAFTS) if "G" in classified["modifiers"] else None
 
-        # --- decouvertes fortuites mineures (option) ----------------------
+        # --- minor incidental findings (optional) --------------------------
         incidental = []
         if catalogue is not None:
             for finding in incidental_lib.sample(rng, age, sex, cfg, catalogue):

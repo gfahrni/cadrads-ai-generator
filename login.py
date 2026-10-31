@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Connexion a opencode — a lancer AVANT run.py.
+"""opencode connection — run this BEFORE run.py.
 
     python3 login.py
 
-Affiche l'etat de la connexion, permet de se connecter (compte ou cle API),
-de lister les modeles, puis teste reellement un appel. run.py refuse de tourner
-tant que ce test n'a pas reussi.
+Shows the connection status, lets you sign in (account or API key), list the
+available models, then makes a real test call. run.py refuses to start until that
+test has succeeded.
 
-Ce script ne stocke aucune cle : opencode garde les identifiants dans
-~/.local/share/opencode/auth.json. Seul le RESULTAT du test est memorise, dans
-.state/login.json (cache d'affichage, jetable).
+This script stores no credential: opencode keeps them in
+~/.local/share/opencode/auth.json. Only the RESULT of the test is remembered, in
+.state/login.json (display cache, disposable).
 """
 from __future__ import annotations
 
@@ -23,17 +23,18 @@ from src import auth  # noqa: E402
 from src import config as cfgmod  # noqa: E402
 
 LINE = "-" * 66
+MAX_SHOWN = 30
 
 HINTS = (
-    "opencode n'a pas pu demarrer. Pistes :",
-    " - droits d'acces sur ~/.local/share/opencode (journal, base locale)",
-    " - shell/environnement restreint (sandbox, conteneur, droits lecture seule)",
-    " - installation incomplete -> essayer 'opencode --version' dans un terminal",
+    "opencode could not start. Things to check:",
+    " - access rights on ~/.local/share/opencode (log, local database)",
+    " - restricted shell/environment (sandbox, container, read-only mount)",
+    " - incomplete install -> try 'opencode --version' in a terminal",
 )
 
 
 def _trim(text: str, max_lines: int = 6) -> list:
-    """Les CLI renvoient parfois des traces completes : on n'affiche que le debut."""
+    """CLIs sometimes dump full stack traces: show only the beginning."""
     lines = [l for l in (text or "").splitlines() if l.strip()]
     return lines[:max_lines] + (["  ..."] if len(lines) > max_lines else [])
 
@@ -50,31 +51,31 @@ def show_state(cfg: dict) -> None:
     state = auth.load_state(ROOT)
     print()
     print("=" * 66)
-    print("  CAD-RADS generator  --  connexion")
+    print("  CAD-RADS generator  --  connection")
     print("=" * 66)
     print(f"  backend  : {cfg['llm']['backend']}")
-    print(f"  modele   : {cfg['llm'].get('model_label', '')}")
-    print(f"  commande : {' '.join(cfg['llm']['command'])}")
+    print(f"  model    : {cfg['llm'].get('model_label', '')}")
+    print(f"  command  : {' '.join(cfg['llm']['command'])}")
     print()
 
     if cfg["llm"]["backend"] == "dry_run":
-        print("  backend 'dry_run' : aucune connexion necessaire.")
-        print("  run.py --dry-run fonctionne sans compte.")
+        print("  backend 'dry_run': no connection needed.")
+        print("  run.py --dry-run works without an account.")
     elif not auth.available(cfg):
-        print(f"  ! binaire introuvable : {auth.binary(cfg)}")
-        print("    -> installe opencode, ou corrige llm.command dans settings.json")
+        print(f"  ! binary not found: {auth.binary(cfg)}")
+        print("    -> install opencode, or fix llm.command in settings.json")
     else:
-        print("  Fournisseurs connectes  (opencode auth list)")
+        print("  Connected providers  (opencode auth list)")
         print(LINE)
         code, text = auth.auth_list(cfg)
         if not text:
-            print("  (aucune sortie)")
+            print("  (no output)")
         elif code == 0:
-            print("  (aucun fournisseur connecte)" if "no" in text.lower()[:40] else "")
+            print("  (no provider connected)" if "no" in text.lower()[:40] else "")
             for line in _trim(text, 12):
                 print(f"  {line}")
         else:
-            print(f"  Echec de 'opencode auth list' (code {code}) :")
+            print(f"  'opencode auth list' failed (code {code}):")
             for line in _trim(text, 4):
                 print(f"  {line}")
             print()
@@ -83,41 +84,38 @@ def show_state(cfg: dict) -> None:
 
     print()
     if state:
-        status = "OK" if state.get("probe_ok") else "ECHEC"
-        print(f"  Dernier test : {status} — {state.get('verified_at', '?')}")
+        status = "OK" if state.get("probe_ok") else "FAILED"
+        print(f"  Last test : {status} — {state.get('verified_at', '?')}")
         if state.get("model_label"):
-            print(f"                 modele {state['model_label']}, latence {state.get('latency_s')}s")
+            print(f"              model {state['model_label']}, latency {state.get('latency_s')}s")
         if not state.get("probe_ok") and state.get("error"):
-            print(f"                 erreur : {str(state['error'])[:160]}")
+            print(f"              error: {str(state['error'])[:160]}")
     else:
-        print("  Dernier test : jamais")
+        print("  Last test : never")
     print()
 
 
 def action_login(cfg: dict) -> None:
     print()
-    print("  Ouverture de 'opencode auth login'.")
-    print("  Choisis ton compte, ou le fournisseur dont tu veux coller la cle API.")
+    print("  Opening 'opencode auth login'.")
+    print("  Pick your account, or the provider whose API key you want to paste.")
     print()
     code = auth.auth_login(cfg)
     print()
     if code != 0:
-        print(f"  Connexion interrompue (code {code}). Rien n'a ete valide.")
+        print(f"  Sign-in interrupted (code {code}). Nothing was validated.")
         return
-    print("  Connexion terminee. Verification par un appel reel...")
+    print("  Sign-in complete. Verifying with a real call...")
     result = auth.probe(cfg)
     _report_probe(result)
     auth.save_state(ROOT, auth.build_state(cfg, result, auth_exit=code))
-
-
-MAX_AFFICHES = 30
 
 
 def action_models(cfg: dict) -> None:
     print()
     code, text = auth.models(cfg)
     if code != 0:
-        print(f"  Echec de 'opencode models' (code {code}) :")
+        print(f"  'opencode models' failed (code {code}):")
         for line in _trim(text, 4):
             print(f"  {line}")
         print()
@@ -125,80 +123,80 @@ def action_models(cfg: dict) -> None:
             print(f"  {hint}")
         return
 
-    toutes = [l.strip() for l in text.splitlines() if l.strip()]
-    if not toutes:
-        print("  Aucun modele disponible : connecte d'abord un fournisseur (option 1).")
+    all_models = [l.strip() for l in text.splitlines() if l.strip()]
+    if not all_models:
+        print("  No model available: connect a provider first (option 1).")
         return
 
-    affichees = toutes[:MAX_AFFICHES]
-    print(f"  {len(toutes)} modeles disponibles (format provider/modele).")
+    shown = all_models[:MAX_SHOWN]
+    print(f"  {len(all_models)} models available (provider/model format).")
     print(LINE)
-    for numero, nom in enumerate(affichees, start=1):
-        print(f"  {numero:>2}) {nom}")
-    if len(toutes) > len(affichees):
-        print(f"  ({len(toutes) - len(affichees)} de plus, non affiches —")
-        print("   utilise 'opencode models | grep motif' pour les retrouver)")
+    for number, name in enumerate(shown, start=1):
+        print(f"  {number:>2}) {name}")
+    if len(all_models) > len(shown):
+        print(f"  ({len(all_models) - len(shown)} more, not shown —")
+        print("   use 'opencode models | grep pattern' to find them)")
     print(LINE)
 
     wanted = str(cfg["llm"].get("model_label", "")).split("@")[0].strip()
-    if wanted and wanted in toutes:
-        print(f"  OK : le modele de settings.json ({wanted}) est disponible.")
+    if wanted and wanted in all_models:
+        print(f"  OK: the settings.json model ({wanted}) is available.")
         return
     if wanted:
-        print(f"  ATTENTION : '{wanted}' n'apparait pas dans la liste.")
+        print(f"  WARNING: '{wanted}' does not appear in the list.")
 
     if not sys.stdin.isatty():
-        print("  -> corrige llm.command et llm.model_label dans settings.json.")
+        print("  -> fix llm.command and llm.model_label in settings.json.")
         return
 
-    choix = input("\n  Numero a adopter (Entree = ne rien changer) > ").strip()
-    if not choix.isdigit() or not (1 <= int(choix) <= len(affichees)):
-        print("  Inchange.")
+    choice = input("\n  Number to adopt (Enter = change nothing) > ").strip()
+    if not choice.isdigit() or not (1 <= int(choice) <= len(shown)):
+        print("  Unchanged.")
         return
 
-    model_id = affichees[int(choix) - 1]
-    if input(f"  Ecrire '{model_id}' dans settings.json ? [O/n] ").strip().lower() \
-            not in ("", "o", "oui", "y", "yes"):
-        print("  Inchange.")
+    model_id = shown[int(choice) - 1]
+    if input(f"  Write '{model_id}' to settings.json? [Y/n] ").strip().lower() \
+            not in ("", "y", "yes", "o", "oui"):
+        print("  Unchanged.")
         return
 
     try:
         cfgmod.set_llm_model(ROOT / "settings.json", model_id)
-    except Exception as exc:  # noqa: BLE001 - on ne laisse pas l'utilisateur sur une trace
-        print(f"  ! echec de l'ecriture : {exc}")
+    except Exception as exc:  # noqa: BLE001 - never leave the user with a traceback
+        print(f"  ! write failed: {exc}")
         return
 
-    print(f"  settings.json mis a jour : --model {model_id}")
-    print("  llm.model_label porte desormais la date du jour.")
-    print("  Option 3 pour valider par un appel reel.")
+    print(f"  settings.json updated: --model {model_id}")
+    print("  llm.model_label now carries today's date.")
+    print("  Option 3 to validate with a real call.")
     return
 
 
-def _report_probe(result: dict) -> None:  # noqa: C901
+def _report_probe(result: dict) -> None:
     print()
     if result.get("skipped"):
-        print("  Test ignore (backend dry_run).")
+        print("  Test skipped (dry_run backend).")
         return
     if not result.get("ok"):
-        print(f"  ECHEC du test : {result.get('error')}")
+        print(f"  Test FAILED: {result.get('error')}")
         print(LINE)
         if "model unavailable" in str(result.get("error", "")).lower():
-            print("  Ce n'est pas un probleme de connexion : ton compte fonctionne, mais")
-            print("  l'identifiant de modele de settings.json n'existe pas chez ce fournisseur.")
-            print("  -> option 2 pour voir les modeles reellement disponibles et en choisir un.")
+            print("  This is not a connection problem: your account works, but the")
+            print("  model id in settings.json does not exist for this provider.")
+            print("  -> option 2 to see the models actually available and pick one.")
             return
-        print("  Pistes :")
-        print("   - compte ou cle non connecte   -> option 1")
-        print("   - modele absent ou mal nomme   -> option 2, puis settings.json")
-        print("   - binaire opencode introuvable -> verifier llm.command")
+        print("  Things to check:")
+        print("   - account or key not connected   -> option 1")
+        print("   - model missing or misnamed      -> option 2, then settings.json")
+        print("   - opencode binary not found      -> check llm.command")
         return
 
-    print(f"  Test REUSSI en {result['latency_s']}s.")
+    print(f"  Test SUCCEEDED in {result['latency_s']}s.")
     if result.get("marker_found"):
-        print("  Sortie propre : le modele a repondu exactement ce qui etait demande.")
+        print("  Clean output: the model replied exactly what was asked.")
     else:
-        print("  Sortie non conforme au marqueur (l'agent ajoute peut-etre du texte).")
-        print("  A verifier a la main :")
+        print("  Output did not match the marker (the agent may add text).")
+        print("  Check by hand:")
         print(LINE)
         for line in (result.get("sample") or "").splitlines()[:8]:
             print(f"  | {line}")
@@ -206,7 +204,7 @@ def _report_probe(result: dict) -> None:  # noqa: C901
 
 def action_probe(cfg: dict) -> None:
     print()
-    print("  Un appel reel, minimal, vers le modele configure...")
+    print("  One real, minimal call to the configured model...")
     result = auth.probe(cfg)
     _report_probe(result)
     auth.save_state(ROOT, auth.build_state(cfg, result))
@@ -214,13 +212,13 @@ def action_probe(cfg: dict) -> None:
 
 def action_logout(cfg: dict) -> None:
     print()
-    answer = input("  Confirmer la deconnexion ? [o/N] ").strip().lower()
-    if answer not in ("o", "oui", "y", "yes"):
-        print("  Annule.")
+    answer = input("  Confirm sign-out? [y/N] ").strip().lower()
+    if answer not in ("y", "yes", "o", "oui"):
+        print("  Cancelled.")
         return
     code = auth.auth_logout(cfg)
     auth.clear_state(ROOT)
-    print(f"  Deconnexion effectuee (code {code}). Etat local efface.")
+    print(f"  Signed out (code {code}). Local state cleared.")
 
 
 def main() -> int:
@@ -230,23 +228,23 @@ def main() -> int:
 
     if not sys.stdin.isatty():
         show_state(cfg)
-        print("  Mode non interactif : lance ce script dans un terminal.\n")
+        print("  Non-interactive mode: run this script in a terminal.\n")
         return 0
 
     actions = {
-        "1": ("Se connecter / ajouter une cle API", action_login),
-        "2": ("Lister les modeles disponibles", action_models),
-        "3": ("Tester la configuration (1 appel reel)", action_probe),
-        "4": ("Se deconnecter", action_logout),
+        "1": ("Sign in / add an API key", action_login),
+        "2": ("List the available models", action_models),
+        "3": ("Test the configuration (one real call)", action_probe),
+        "4": ("Sign out", action_logout),
     }
 
     while True:
         show_state(cfg)
         for key, (label, _) in actions.items():
             print(f"  {key}) {label}")
-        print("  5) Quitter")
+        print("  5) Quit")
         try:
-            choice = input("\n  choix > ").strip()
+            choice = input("\n  choice > ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return 0
@@ -255,21 +253,21 @@ def main() -> int:
             print()
             return 0
         if choice not in actions:
-            print("\n  Choix invalide.")
+            print("\n  Invalid choice.")
             continue
 
         try:
             actions[choice][1](cfg)
         except KeyboardInterrupt:
-            print("\n  Interrompu.")
-        except Exception as exc:  # noqa: BLE001 - on ne laisse pas l'utilisateur sur une trace
-            print(f"\n  ! erreur inattendue : {exc}")
+            print("\n  Interrupted.")
+        except Exception as exc:  # noqa: BLE001 - never leave the user with a traceback
+            print(f"\n  ! unexpected error: {exc}")
 
         state = auth.load_state(ROOT)
         if state and state.get("probe_ok"):
             print()
-            print("  Connexion validee. Tu peux lancer :  python3 run.py")
-            input("  [Entree] pour continuer ")
+            print("  Connection validated. You can now run:  python3 run.py")
+            input("  [Enter] to continue ")
 
 
 if __name__ == "__main__":

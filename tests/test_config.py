@@ -1,4 +1,4 @@
-"""Tests de la reecriture du modele dans settings.json.
+"""Tests for rewriting the model in settings.json.
 
     python3 tests/test_config.py
 """
@@ -22,19 +22,19 @@ def _write_settings(directory: Path, llm: dict) -> Path:
 
 
 class TestSetLlmModel(unittest.TestCase):
-    def test_remplace_le_modele_existant(self):
+    def test_replaces_the_existing_model(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = _write_settings(Path(tmp), {
                 "backend": "opencode",
-                "command": ["opencode", "run", "--model", "vieux/modele", "{prompt}"],
-                "model_label": "vieux/modele@2020-01-01",
+                "command": ["opencode", "run", "--model", "old/model", "{prompt}"],
+                "model_label": "old/model@2020-01-01",
             })
-            cfg = config.set_llm_model(path, "opencode/bon-modele", stamp="2026-10-31")
+            cfg = config.set_llm_model(path, "opencode/good-model", stamp="2026-10-31")
             self.assertEqual(cfg["llm"]["command"],
-                             ["opencode", "run", "--model", "opencode/bon-modele", "{prompt}"])
-            self.assertEqual(cfg["llm"]["model_label"], "opencode/bon-modele@2026-10-31")
+                             ["opencode", "run", "--model", "opencode/good-model", "{prompt}"])
+            self.assertEqual(cfg["llm"]["model_label"], "opencode/good-model@2026-10-31")
 
-    def test_insere_le_flag_model_absent(self):
+    def test_inserts_the_model_flag_when_absent(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = _write_settings(Path(tmp), {
                 "backend": "opencode",
@@ -45,32 +45,43 @@ class TestSetLlmModel(unittest.TestCase):
             self.assertIn("a/b", cfg["llm"]["command"])
             self.assertIn("{prompt}", cfg["llm"]["command"])
 
-    def test_ajoute_le_placeholder_prompt_si_absent(self):
+    def test_appends_the_prompt_placeholder_when_absent(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = _write_settings(Path(tmp), {
                 "backend": "opencode",
-                "command": ["opencode", "run", "--model", "vieux/modele"],
+                "command": ["opencode", "run", "--model", "old/model"],
             })
             cfg = config.set_llm_model(path, "a/b", stamp="2026-10-31")
             self.assertIn("{prompt}", cfg["llm"]["command"])
 
-    def test_ne_touche_aux_autres_reglages(self):
+    def test_leaves_other_settings_untouched(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = _write_settings(Path(tmp), {
                 "backend": "opencode",
-                "command": ["opencode", "run", "--model", "vieux/modele", "{prompt}"],
+                "command": ["opencode", "run", "--model", "old/model", "{prompt}"],
                 "timeout_s": 42,
             })
             config.set_llm_model(path, "a/b", stamp="2026-10-31")
-            brut = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(brut["llm"]["timeout_s"], 42)
-            self.assertEqual(brut["run"]["n_reports"], 3)
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(raw["llm"]["timeout_s"], 42)
+            self.assertEqual(raw["run"]["n_reports"], 3)
 
-    def test_le_resultat_reste_une_config_valide(self):
+    def test_uses_today_when_no_stamp_is_given(self):
+        # regression: datetime was only imported locally, so the default path raised
         with tempfile.TemporaryDirectory() as tmp:
             path = _write_settings(Path(tmp), {
                 "backend": "opencode",
-                "command": ["opencode", "run", "--model", "vieux/modele", "{prompt}"],
+                "command": ["opencode", "run", "--model", "old/model", "{prompt}"],
+            })
+            cfg = config.set_llm_model(path, "a/b")
+            self.assertTrue(cfg["llm"]["model_label"].startswith("a/b@"))
+            self.assertRegex(cfg["llm"]["model_label"], r"@\d{4}-\d{2}-\d{2}$")
+
+    def test_the_result_is_still_a_valid_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = _write_settings(Path(tmp), {
+                "backend": "opencode",
+                "command": ["opencode", "run", "--model", "old/model", "{prompt}"],
             })
             cfg = config.set_llm_model(path, "a/b", stamp="2026-10-31")
             self.assertEqual(config.validate(cfg), [])

@@ -1,4 +1,4 @@
-"""Rendu des prompts a partir des templates de prompts/ (editables sans code)."""
+"""Prompt rendering from the templates in prompts/ (editable without touching code)."""
 from __future__ import annotations
 
 import hashlib
@@ -31,7 +31,7 @@ BURDEN_LEGEND = (
 
 
 class PromptError(Exception):
-    """Template manquant ou placeholder inconnu."""
+    """Missing template or unknown placeholder."""
 
 
 def load_templates(prompts_dir: Path) -> dict:
@@ -40,7 +40,7 @@ def load_templates(prompts_dir: Path) -> dict:
     for name in ("system", "user"):
         path = prompts_dir / f"{name}.md"
         if not path.exists():
-            raise PromptError(f"Template introuvable : {path}")
+            raise PromptError(f"Template not found: {path}")
         templates[name] = path.read_text(encoding="utf-8")
     return templates
 
@@ -71,10 +71,10 @@ def _scenario_block(case: dict, reference: dict) -> str:
 
 
 def _other_structures_block(case: dict, cfg: dict) -> str:
-    """Section « autres structures » : vide si les deux options sont desactivees.
+    """The "other structures" section: empty when both options are disabled.
 
-    - describe_normal  -> decrire les organes du champ de vue comme normaux
-    - include_incidental -> decrire les decouvertes fortuites tirees au sort
+    - describe_normal  -> describe the organs of the field of view as normal
+    - include_incidental -> describe the incidental findings drawn for this case
     """
     block = cfg.get("other_structures", {})
     findings = case.get("incidental") or []
@@ -138,7 +138,7 @@ def render(templates: dict, case: dict, cfg: dict, reference: dict) -> dict:
         system = system.replace(token, value)
 
     if "{{" in user or "{{" in system:
-        raise PromptError("Placeholder non resolu dans les templates (verifier les {{...}}).")
+        raise PromptError("Unresolved placeholder in the templates (check the {{...}}).")
 
     full = system.rstrip() + "\n\n---\n\n" + user.strip()
     return {

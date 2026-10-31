@@ -1,37 +1,37 @@
 {
   "_source": "CAD-RADS 2.0 — Cury RC et al. Radiol Cardiothorac Imaging 2022;4(5):e220183. doi:10.1148/ryct.220183",
-  "_verify": "VÉRIFIER ce fichier contre le document de consensus avant de générer le dataset final. Les catégories et les seuils de sténose sont stables ; la liste des modificateurs (surtout V vs P) doit être relue sur la Table 3 du consensus. Toute erreur ici se propage dans la totalité du dataset.",
+  "_verify": "VERIFY this file against the consensus document before generating the final dataset. Categories and stenosis thresholds are stable; the modifier list (especially V vs P) must be re-read in Table 3 of the consensus. Any error here propagates into the whole dataset.",
 
   "categories": {
-    "0":  { "stenosis_pct": [0, 0],     "label": "CAD-RADS 0",  "meaning": "Absence de plaque et de sténose" },
-    "1":  { "stenosis_pct": [1, 24],    "label": "CAD-RADS 1",  "meaning": "Sténose minimale" },
-    "2":  { "stenosis_pct": [25, 49],   "label": "CAD-RADS 2",  "meaning": "Sténose légère" },
-    "3":  { "stenosis_pct": [50, 69],   "label": "CAD-RADS 3",  "meaning": "Sténose modérée" },
-    "4A": { "stenosis_pct": [70, 99],   "label": "CAD-RADS 4A", "meaning": "Sténose sévère, 1 ou 2 vaisseaux" },
-    "4B": { "stenosis_pct": [50, 99],   "label": "CAD-RADS 4B", "meaning": "Sténose du tronc commun >= 50% ou atteinte obstructive 3 vaisseaux" },
-    "5":  { "stenosis_pct": [100, 100], "label": "CAD-RADS 5",  "meaning": "Occlusion totale d'au moins une artère coronaire" }
+    "0":  { "stenosis_pct": [0, 0],     "label": "CAD-RADS 0",  "meaning": "No plaque, no stenosis" },
+    "1":  { "stenosis_pct": [1, 24],    "label": "CAD-RADS 1",  "meaning": "Minimal stenosis" },
+    "2":  { "stenosis_pct": [25, 49],   "label": "CAD-RADS 2",  "meaning": "Mild stenosis" },
+    "3":  { "stenosis_pct": [50, 69],   "label": "CAD-RADS 3",  "meaning": "Moderate stenosis" },
+    "4A": { "stenosis_pct": [70, 99],   "label": "CAD-RADS 4A", "meaning": "Severe stenosis, 1 or 2 vessels" },
+    "4B": { "stenosis_pct": [50, 99],   "label": "CAD-RADS 4B", "meaning": "Left main stenosis >= 50% or obstructive three-vessel disease" },
+    "5":  { "stenosis_pct": [100, 100], "label": "CAD-RADS 5",  "meaning": "Total occlusion of at least one coronary artery" }
   },
 
   "plaque_burden": {
-    "P1": "Plaque focale, faible quantité",
-    "P2": "Quantité modérée de plaque",
-    "P3": "Quantité sévère de plaque",
-    "P4": "Quantité extensive de plaque"
+    "P1": "Focal plaque, mild amount",
+    "P2": "Moderate amount of plaque",
+    "P3": "Severe amount of plaque",
+    "P4": "Extensive amount of plaque"
   },
 
   "ischemia": {
-    "none": "Non évaluée",
-    "I+":   "Ischémie positive (CT-FFR ou CTP)",
-    "I-":   "Ischémie négative",
-    "I+/-": "Ischémie borderline"
+    "none": "Not assessed",
+    "I+":   "Positive ischemia (CT-FFR or CTP)",
+    "I-":   "Negative ischemia",
+    "I+/-": "Borderline ischemia"
   },
 
   "modifiers": {
-    "N": "Segment non diagnostique / non évaluable",
-    "S": "Stent coronaire",
-    "G": "Pontage (graft)",
-    "E": "Exception : anomalie coronaire non athéroscléreuse",
-    "V": "Plaque vulnérable / haut risque (à relire dans le consensus 2.0)"
+    "N": "Non-diagnostic / non-evaluable segment",
+    "S": "Coronary stent",
+    "G": "Bypass graft",
+    "E": "Exception: non-atherosclerotic coronary abnormality",
+    "V": "Vulnerable / high-risk plaque (to be re-read in the 2.0 consensus)"
   },
 
   "vessels": {

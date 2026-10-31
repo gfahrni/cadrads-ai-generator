@@ -1,8 +1,8 @@
-"""Persistance : dossier de run, manifeste JSONL, reprise, export, resume.
+"""Persistence: run folder, JSONL manifest, resume, export, summary.
 
-Le manifeste est le registre de verite : une ligne JSON par tentative. Il sert
-a la fois de journal d'audit et de mecanisme de reprise (on ne regenere jamais
-un cas deja reussi).
+The manifest is the register of truth: one JSON line per attempt. It serves both as
+an audit log and as the resume mechanism (a case that already succeeded is never
+regenerated).
 """
 from __future__ import annotations
 
@@ -29,21 +29,21 @@ class RunStore:
         self.reports_dir = self.dir / "reports"
         self.rejected_dir = self.dir / "reports_rejected"
         self.raw_dir = self.dir / "raw"
+        self.prompts_dir = self.dir / "prompts"
+        self.prompt_index_path = self.prompts_dir / "index.tsv"
         self.manifest_path = self.dir / "manifest.jsonl"
         self.summary_path = self.dir / "summary.json"
         self.csv_path = self.dir / "reports_index.csv"
-        self.prompts_dir = self.dir / "prompts"
-        self.prompt_index_path = self.prompts_dir / "index.tsv"
         self.log_path = self.dir / "run.log"
 
-    # -- cycle de vie -------------------------------------------------------
+    # -- lifecycle ----------------------------------------------------------
     def init(self) -> None:
         self.reports_dir.mkdir(parents=True, exist_ok=True)
         self.rejected_dir.mkdir(parents=True, exist_ok=True)
         self.raw_dir.mkdir(parents=True, exist_ok=True)
 
     def existing_fingerprint(self) -> str | None:
-        """Empreinte de config du run deja present dans ce dossier, s'il existe."""
+        """Config fingerprint of the run already present in this folder, if any."""
         meta_path = self.dir / "run.json"
         if not meta_path.exists():
             return None
@@ -78,7 +78,7 @@ class RunStore:
             encoding="utf-8",
         )
 
-    # -- journal ------------------------------------------------------------
+    # -- log ----------------------------------------------------------------
     def log(self, message: str) -> None:
         line = f"{datetime.now().isoformat(timespec='seconds')} {message}\n"
         with self.log_path.open("a", encoding="utf-8") as handle:
@@ -100,21 +100,20 @@ class RunStore:
             try:
                 out.append(json.loads(line))
             except json.JSONDecodeError:
-                continue  # ligne tronquee par un arret brutal : ignoree
+                continue  # line truncated by a hard stop: ignored
         return out
 
     def done_ids(self) -> set:
-        """Cas deja generes avec succes (dernier enregistrement par case_id).
+        """Cases already generated successfully (last record per case_id).
 
-        Les cas en echec ne sont PAS consideres comme faits : ils sont retentes
-        a la reprise.
+        Failed cases are NOT considered done: they are retried on resume.
         """
         latest = {}
         for rec in self.records():
             latest[rec["case_id"]] = rec
         return {cid for cid, rec in latest.items() if rec.get("status") == "ok"}
 
-    # -- ecriture -----------------------------------------------------------
+    # -- writing ------------------------------------------------------------
     def filename_for(self, case: dict) -> str:
         template = self.cfg["export"]["filename"]
         fields = {
@@ -131,21 +130,21 @@ class RunStore:
         return path
 
     def write_rejected(self, case: dict, text: str) -> Path:
-        """Rapport rejete par un controle automatique : garde a part, jamais
-        melange au dataset final."""
+        """Report rejected by an automatic check: kept aside, never mixed into the
+        final dataset."""
         path = self.rejected_dir / self.filename_for(case)
         path.write_text(text.rstrip() + "\n", encoding="utf-8")
         return path
 
     def write_prompt(self, case: dict, prompt_text: str) -> Path:
-        """Ecrit le prompt rendu, tel qu'il sera envoye (aucune en-tete ajoutee)."""
+        """Write the rendered prompt exactly as it will be sent (no header added)."""
         self.prompts_dir.mkdir(parents=True, exist_ok=True)
         path = self.prompts_dir / f"{_safe(case['case_id'])}.md"
         path.write_text(prompt_text.rstrip() + "\n", encoding="utf-8")
         return path
 
     def write_prompt_index(self, cases) -> int:
-        """Index TSV reconstruit depuis les fichiers presents (idempotent, resumable)."""
+        """TSV index rebuilt from the files on disk (idempotent, resumable)."""
         if not self.prompts_dir.exists():
             return 0
         by_id = {case["case_id"]: case for case in cases}

@@ -1,13 +1,15 @@
-"""Chargement, fusion avec les valeurs par defaut, validation de settings.json.
+"""Loading, default merging and validation of settings.json.
 
-Regle du projet : l'humain ne modifie QUE settings.json. Ce module garantit
-qu'une erreur de saisie produit un message clair, pas une trace Python.
+Project rule: the human only edits settings.json. This module makes sure a
+typing mistake produces a clear message rather than a Python traceback.
 """
 from __future__ import annotations
 
 import copy
 import hashlib
 import json
+import secrets
+from datetime import datetime
 from pathlib import Path
 
 LANGUAGES = {
@@ -72,11 +74,11 @@ DEFAULTS = {
 
 
 class ConfigError(Exception):
-    """Erreur de configuration destinee a l'humain."""
+    """Configuration error meant for the human."""
 
 
 def _strip_doc_keys(node):
-    """Retire les cles '_doc' / '_comment' : elles documentent mais ne pilotent rien."""
+    """Drop the '_doc' / '_comment' keys: they document but drive nothing."""
     if isinstance(node, dict):
         return {k: _strip_doc_keys(v) for k, v in node.items() if not k.startswith("_")}
     if isinstance(node, list):
@@ -98,21 +100,21 @@ def _deep_merge(base, override):
 def load_settings(path: Path) -> dict:
     path = Path(path)
     if not path.exists():
-        raise ConfigError(f"Fichier introuvable : {path}")
+        raise ConfigError(f"File not found: {path}")
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ConfigError(
-            f"JSON invalide dans {path.name} (ligne {exc.lineno}, colonne {exc.colno}) : {exc.msg}"
+            f"Invalid JSON in {path.name} (line {exc.lineno}, column {exc.colno}): {exc.msg}"
         ) from exc
     if not isinstance(raw, dict):
-        raise ConfigError(f"{path.name} doit contenir un objet JSON a la racine.")
+        raise ConfigError(f"{path.name} must contain a JSON object at the root.")
 
     cfg = _deep_merge(copy.deepcopy(DEFAULTS), raw)
     errors = validate(cfg)
     if errors:
         raise ConfigError(
-            "settings.json invalide :\n" + "\n".join(f"  - {e}" for e in errors)
+            "invalid settings.json:\n" + "\n".join(f"  - {e}" for e in errors)
         )
     return cfg
 
@@ -123,79 +125,79 @@ def validate(cfg: dict) -> list[str]:
     checks, export = cfg["checks"], cfg["export"]
 
     if not isinstance(run["n_reports"], int) or isinstance(run["n_reports"], bool) or run["n_reports"] < 1:
-        errors.append("run.n_reports doit etre un entier >= 1")
+        errors.append("run.n_reports must be an integer >= 1")
     if not isinstance(run["seed"], int):
-        errors.append("run.seed doit etre un entier (reproductibilite du tirage)")
+        errors.append("run.seed must be an integer (reproducibility of the draw)")
 
     if llm["backend"] not in BACKENDS:
-        errors.append(f"llm.backend doit valoir {', '.join(BACKENDS)}")
+        errors.append(f"llm.backend must be one of {', '.join(BACKENDS)}")
     if llm["backend"] == "opencode":
         cmd = llm.get("command")
         if not isinstance(cmd, list) or not cmd or not all(isinstance(x, str) for x in cmd):
-            errors.append("llm.command doit etre une liste de chaines non vide")
+            errors.append("llm.command must be a non-empty list of strings")
     if not isinstance(llm["timeout_s"], (int, float)) or llm["timeout_s"] <= 0:
-        errors.append("llm.timeout_s doit etre > 0")
+        errors.append("llm.timeout_s must be > 0")
 
     langs = gen["languages"]
     if not isinstance(langs, list) or not langs:
-        errors.append("generation.languages doit etre une liste non vide")
+        errors.append("generation.languages must be a non-empty list")
     else:
         unknown = [x for x in langs if x not in LANGUAGES]
         if unknown:
-            errors.append(f"generation.languages : langue(s) inconnue(s) {unknown} ; valeurs possibles {list(LANGUAGES)}")
+            errors.append(f"generation.languages: unknown language(s) {unknown}; "
+                          f"allowed values {list(LANGUAGES)}")
 
     if gen["style"] not in STYLES:
-        errors.append(f"generation.style doit valoir {', '.join(STYLES)}")
+        errors.append(f"generation.style must be one of {', '.join(STYLES)}")
 
     age = gen["age_range"]
-    if not (isinstance(age, list) and len(age) == 2 and all(isinstance(x, int) for x in age) and 0 < age[0] < age[1] < 120):
-        errors.append("generation.age_range doit etre [min, max] avec 0 < min < max < 120")
+    if not (isinstance(age, list) and len(age) == 2 and all(isinstance(x, int) for x in age)
+            and 0 < age[0] < age[1] < 120):
+        errors.append("generation.age_range must be [min, max] with 0 < min < max < 120")
     if gen["sex"] not in ("random", "male", "female"):
-        errors.append("generation.sex doit valoir random, male ou female")
+        errors.append("generation.sex must be random, male or female")
     if gen["indication"] not in ("stable", "acute"):
-        errors.append("generation.indication doit valoir stable ou acute")
+        errors.append("generation.indication must be stable or acute")
 
     weights = gen["cadrads_weights"]
     if not isinstance(weights, dict) or not weights:
-        errors.append("generation.cadrads_weights doit etre un objet non vide")
+        errors.append("generation.cadrads_weights must be a non-empty object")
     else:
         bad = [k for k, v in weights.items() if not isinstance(v, (int, float)) or v < 0]
         if bad:
-            errors.append(f"generation.cadrads_weights : poids invalides pour {bad}")
+            errors.append(f"generation.cadrads_weights: invalid weights for {bad}")
         elif sum(weights.values()) <= 0:
-            errors.append("generation.cadrads_weights : la somme des poids doit etre > 0")
+            errors.append("generation.cadrads_weights: the weights must sum to more than 0")
+
+    other = cfg["other_structures"]
+    if not isinstance(other.get("describe_normal"), bool):
+        errors.append("other_structures.describe_normal must be true or false")
+    if not isinstance(other.get("include_incidental"), bool):
+        errors.append("other_structures.include_incidental must be true or false")
+    if not isinstance(other.get("prevalence_scale"), (int, float)) or other["prevalence_scale"] < 0:
+        errors.append("other_structures.prevalence_scale must be a number >= 0")
+    if not isinstance(other.get("max_per_case"), int) or other["max_per_case"] < 0:
+        errors.append("other_structures.max_per_case must be an integer >= 0")
+    if not isinstance(other.get("exclude"), list):
+        errors.append("other_structures.exclude must be a list of identifiers")
 
     for key in ("label_integrity", "language_match", "modifier_mention", "incidental_mention"):
         if checks[key] not in ENFORCEMENT:
-            errors.append(f"checks.{key} doit valoir {', '.join(ENFORCEMENT)}")
-    other = cfg["other_structures"]
-    if not isinstance(other.get("describe_normal"), bool):
-        errors.append("other_structures.describe_normal doit etre true ou false")
-    if not isinstance(other.get("include_incidental"), bool):
-        errors.append("other_structures.include_incidental doit etre true ou false")
-    if not isinstance(other.get("prevalence_scale"), (int, float)) or other["prevalence_scale"] < 0:
-        errors.append("other_structures.prevalence_scale doit etre un nombre >= 0")
-    if not isinstance(other.get("max_per_case"), int) or other["max_per_case"] < 0:
-        errors.append("other_structures.max_per_case doit etre un entier >= 0")
-    if not isinstance(other.get("exclude"), list):
-        errors.append("other_structures.exclude doit etre une liste d'identifiants")
-
+            errors.append(f"checks.{key} must be one of {', '.join(ENFORCEMENT)}")
     if checks["min_words"] >= checks["max_words"]:
-        errors.append("checks.min_words doit etre < checks.max_words")
+        errors.append("checks.min_words must be < checks.max_words")
 
     if "{case_id}" not in export["filename"]:
-        errors.append("export.filename doit contenir {case_id} (unicite des fichiers)")
+        errors.append("export.filename must contain {case_id} (unique filenames)")
 
     return errors
 
 
 def set_llm_model(path: Path, model_id: str, stamp: str | None = None) -> dict:
-    """Reecrit llm.command (valeur de --model) et llm.model_label dans settings.json.
+    """Rewrite llm.command (the --model value) and llm.model_label in settings.json.
 
-    Ne touche a rien d'autre. Retourne la config rechargee et validee.
+    Touches nothing else. Returns the reloaded, validated configuration.
     """
-    import re
-
     path = Path(path)
     raw = json.loads(path.read_text(encoding="utf-8"))
     llm = raw.setdefault("llm", {})
@@ -210,7 +212,7 @@ def set_llm_model(path: Path, model_id: str, stamp: str | None = None) -> dict:
         else:
             command.append(model_id)
     else:
-        # insere juste apres le sous-commande "run" si elle existe
+        # insert right after the "run" sub-command when present
         anchor = command.index("run") + 1 if "run" in command else 1
         command[anchor:anchor] = ["--model", model_id]
 
@@ -226,22 +228,19 @@ def set_llm_model(path: Path, model_id: str, stamp: str | None = None) -> dict:
 
 
 def settings_fingerprint(cfg: dict) -> str:
-    """Empreinte stable de la config (sans cles de documentation), pour la tracabilite."""
+    """Stable fingerprint of the config (documentation keys excluded), for provenance."""
     canonical = json.dumps(_strip_doc_keys(cfg), sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
 
 
 def resolve_run_id(cfg: dict) -> str:
-    """Identifiant de run.
+    """Run identifier.
 
-    'auto' -> horodatage + suffixe aleatoire : deux lancements dans la meme
-    seconde ne peuvent pas ecraser le meme dossier. Consequence assumee : avec
-    'auto', chaque lancement cree un NOUVEAU dossier, donc `resume` ne s'applique
-    pas. Pour reprendre un run interrompu, fixer run.run_id.
+    'auto' -> timestamp plus a random suffix: two launches within the same second
+    cannot overwrite the same folder. Accepted consequence: with 'auto', every
+    launch creates a NEW folder, so `resume` does not apply. To restart an
+    interrupted run, set run.run_id.
     """
-    import secrets
-    from datetime import datetime
-
     rid = str(cfg["run"]["run_id"])
     if rid.strip().lower() == "auto":
         return f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"

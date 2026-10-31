@@ -22,17 +22,17 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Verifier la version
+      - name: Check the Python version
         run: python --version
 
-      - name: Installer les dependances (aucune)
+      - name: Install dependencies (none)
         run: pip install -r requirements.txt
 
       - name: Tests
         run: python -m unittest discover -s tests -v
 
-      - name: Le plan se construit sans appel reseau
+      - name: The plan builds without any network call
         run: python run.py --plan-only --limit 5
 
-      - name: La plomberie tourne en dry-run
+      - name: The plumbing runs in dry-run
         run: python run.py --dry-run --limit 3

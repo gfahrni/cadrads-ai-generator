@@ -1,21 +1,21 @@
-"""Nettoyage de la reponse et controles automatiques.
+"""Response cleaning and automatic checks.
 
-Deux familles de controles, a ne pas confondre :
+Two families of checks, not to be confused:
 
-- `label` : le rapport contient-il le label CAD-RADS calcule par
-  src/classify.py ? C'est un controle d'INTEGRITE (le modele retranscrit-il
-  correctement ?), pas une mesure d'exactitude clinique : le label est impose.
-- `modifiers` : les modificateurs annonces (stent, pontage, segment non
-  diagnostique) sont-ils decrits dans le corps du rapport ? Controle semantique
-  leger, qui detecte les labels colles sans contenu correspondant.
+- `label`: does the report contain the CAD-RADS label computed by
+  src/classify.py? This is an INTEGRITY check (does the model transcribe it
+  correctly?), not a measure of clinical accuracy: the label is imposed.
+- `modifiers`: are the announced modifiers (stent, graft, non-diagnostic segment)
+  described in the body of the report? A light semantic check, which catches labels
+  pasted without the matching content.
 
-Plus les controles de forme : langue, longueur, phrases interdites.
+Plus the shape checks: language, length, forbidden phrases.
 """
 from __future__ import annotations
 
 import re
 
-# --- nettoyage -------------------------------------------------------------
+# --- cleaning --------------------------------------------------------------
 
 _FENCE = re.compile(r"```[a-zA-Z0-9_-]*\s*")
 _PREAMBLE = re.compile(
@@ -27,7 +27,7 @@ _CAD_RADS_LINE = re.compile(r"CAD[-\s]?RADS\s*[™®]?\s*[:=]?\s*([0-5])\s*([A-B
 
 
 def clean(raw: str) -> str:
-    """Retire le bruit habituel des LLM (blocs de code, preambule, guillemets)."""
+    """Remove the usual LLM noise (code fences, preamble, quotes)."""
     text = _FENCE.sub("", raw or "")
     text = text.strip()
 
@@ -45,7 +45,7 @@ def clean(raw: str) -> str:
     return text.strip()
 
 
-# --- detection de langue (heuristique legere) ------------------------------
+# --- language detection (light heuristic) ----------------------------------
 
 _STOPWORDS = {
     "en": ("the", "and", "with", "of", "is", "there", "no", "coronary"),
@@ -65,10 +65,10 @@ def detect_language(text: str) -> str | None:
     return best if scores[best] >= 2 else None
 
 
-# --- label impose ----------------------------------------------------------
+# --- imposed label ---------------------------------------------------------
 
 def extract_cadrads(text: str) -> str | None:
-    """Derniere mention CAD-RADS du texte -> categorie ('4A', '0'...). Pour le debug."""
+    """Last CAD-RADS mention of the text -> category ('4A', '0'...). For debugging."""
     matches = list(_CAD_RADS_LINE.finditer(text))
     if not matches:
         return None
@@ -77,7 +77,7 @@ def extract_cadrads(text: str) -> str | None:
 
 
 def _label_pattern(label: str) -> re.Pattern:
-    """Regex tolerante : 'CAD-RADS 4A/P2/S' accepte les espaces et variantes de tiret."""
+    """Tolerant regex: 'CAD-RADS 4A/P2/S' accepts spaces and hyphen variants."""
     parts = []
     for token in re.split(r"(/|\s+)", label):
         if not token:
@@ -96,13 +96,14 @@ def label_present(text: str, label: str) -> bool:
 
 
 def _body_only(text: str) -> str:
-    """Texte prive de la ligne de classification finale."""
+    """Text without the final classification line."""
     matches = list(_CAD_RADS_LINE.finditer(text))
     return text[: matches[-1].start()] if matches else text
 
 
-# --- modificateurs reellement decrits --------------------------------------
-
+# --- modifiers actually described ------------------------------------------
+# The keyword tables are multilingual on purpose: they must match the report
+# language (en/fr/de/it), so the non-English entries are data, not prose.
 _MODIFIER_KEYWORDS = {
     "S": ("stent",),
     "G": ("graft", "bypass", "pontage", "bypassgraft"),
@@ -120,10 +121,10 @@ def _mentions(text: str, modifiers) -> dict:
 
 
 def _incidental_mention(body: str, findings) -> dict:
-    """Chaque decouverte fortuite est-elle evoquee dans le corps ?
+    """Is each incidental finding mentioned in the body?
 
-    None = non verifiable : le catalogue ne fournit pas de mots-cles pour la
-    langue du rapport (autre que en/fr/de/it).
+    None = not verifiable: the catalogue provides no keyword for the report
+    language (other than en/fr/de/it).
     """
     mentioned = {}
     for finding in findings:
@@ -132,25 +133,25 @@ def _incidental_mention(body: str, findings) -> dict:
     return mentioned
 
 
-# --- controle principal ----------------------------------------------------
+# --- main check ------------------------------------------------------------
 
 def check(text: str, case: dict, cfg: dict) -> dict:
     checks_cfg = cfg["checks"]
     words = len(text.split())
 
     def status(key, ok):
-        """Traduit un booleen + la politique de checks.* en statut symbolique."""
+        """Turn a boolean plus the checks.* policy into a symbolic status."""
         mode = checks_cfg[key]
         if mode == "off" or ok:
             return "ok" if ok else "off"
-        return mode  # "fail" ou "warn"
+        return mode  # "fail" or "warn"
 
     expected_label = case["label"]
     label_ok = label_present(text, expected_label)
 
     detected_lang = detect_language(text)
     if detected_lang is None:
-        # Langue non determinable (texte tres court) : ni succes ni echec.
+        # Language not determinable (very short text): neither success nor failure.
         language_ok = False
         language_status = "warn"
     else:
@@ -166,7 +167,7 @@ def check(text: str, case: dict, cfg: dict) -> dict:
         incidental_mention = {}
         incidental_ok = True
         incidental_status = "off"
-        incidental_skipped = True  # rien a verifier : hors denominateur
+        incidental_skipped = True  # nothing to check: out of the denominator
     else:
         incidental_mention = _incidental_mention(_body_only(text).lower(), findings)
         verifiable = {k: v for k, v in incidental_mention.items() if v is not None}

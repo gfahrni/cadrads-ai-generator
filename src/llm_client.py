@@ -1,12 +1,12 @@
-"""Client LLM.
+"""LLM client.
 
-ATTENTION : la partie APPEL est un PLACEHOLDER.
-  - backend "dry_run"  -> aucune requete, texte factice (plomberie testable)
-  - backend "opencode" -> lance la commande definie dans settings.json > llm.command
-  - backend "http_api" -> NON IMPLEMENTE (voir HttpApiClient plus bas)
+WARNING: the CALL part is a PLACEHOLDER.
+  - backend "dry_run"  -> no request, fabricated text (plumbing testable)
+  - backend "opencode" -> runs the command defined in settings.json > llm.command
+  - backend "http_api" -> NOT IMPLEMENTED (see HttpApiClient below)
 
-Rien n'a ete teste de bout en bout : la commande exacte d'opencode doit etre
-verifiee sur le compte reel, puis ajustee dans settings.json (pas dans ce fichier).
+Nothing has been tested end to end: the exact opencode command must be verified on
+the real account, then adjusted in settings.json (not in this file).
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ import time
 
 
 class ClientError(Exception):
-    """Erreur fatale (configuration, binaire absent) — arret immediat."""
+    """Fatal error (configuration, missing binary) — immediate stop."""
 
 
 @dataclasses.dataclass
@@ -38,12 +38,12 @@ class LLMResult:
 # dry_run
 # --------------------------------------------------------------------------
 class DryRunClient:
-    """Genere un texte factice MAIS structurellement realiste.
+    """Produces fabricated text that is nonetheless structurally realistic.
 
-    Objectif : valider le plan, les prompts, le manifeste, la reprise et les
-    controles automatiques sans consommer un seul appel. Le texte n'a aucune
-    valeur scientifique ; les sorties sont isolees dans un run_id suffixe
-    '-dryrun' et le manifeste porte dry_run=true.
+    Purpose: validate the plan, the prompts, the manifest, the resume logic and the
+    automatic checks without spending a single call. The text has no scientific
+    value; outputs are isolated in a '-dryrun' suffixed run_id and the manifest
+    carries dry_run=true.
     """
 
     def __init__(self, cfg: dict):
@@ -88,12 +88,12 @@ class DryRunClient:
 # opencode (CLI)
 # --------------------------------------------------------------------------
 class OpencodeClient:
-    """Appelle le CLI opencode via un template de commande.
+    """Calls the opencode CLI through a command template.
 
-    Deux modes, choisis automatiquement :
-      - si un element de llm.command contient {prompt} -> prompt passe en argument
-      - sinon                                        -> prompt envoye sur stdin
-    Le mode stdin est preferable pour les prompts longs (limite ARG_MAX).
+    Two modes, chosen automatically:
+      - if any element of llm.command contains {prompt} -> prompt passed as argument
+      - otherwise                                      -> prompt sent on stdin
+    The stdin mode is preferable for long prompts (ARG_MAX limit).
     """
 
     def __init__(self, cfg: dict):
@@ -108,9 +108,9 @@ class OpencodeClient:
         exe = self.command[0]
         if shutil.which(exe) is None:
             raise ClientError(
-                f"Commande introuvable : '{exe}'.\n"
-                f"  -> installer/ouvrir opencode, ou corriger llm.command dans settings.json.\n"
-                f"  -> pour tester la plomberie sans API : python3 run.py --dry-run"
+                f"Command not found: '{exe}'.\n"
+                f"  -> install/open opencode, or fix llm.command in settings.json.\n"
+                f"  -> to test the plumbing without any API: python3 run.py --dry-run"
             )
 
     def _argv(self, prompt: str):
@@ -119,7 +119,7 @@ class OpencodeClient:
         return None
 
     def generate(self, prompt: str, case: dict) -> LLMResult:
-        last_error = "erreur inconnue"
+        last_error = "unknown error"
         started = time.time()
         for attempt in range(1, self.retries + 2):
             try:
@@ -134,14 +134,14 @@ class OpencodeClient:
                         argv, capture_output=True, text=True, timeout=self.timeout,
                     )
                 if proc.returncode != 0:
-                    raise RuntimeError(f"code de sortie {proc.returncode} : {(proc.stderr or '').strip()[:300]}")
+                    raise RuntimeError(f"exit code {proc.returncode}: {(proc.stderr or '').strip()[:300]}")
                 text = (proc.stdout or "").strip()
                 if not text:
-                    raise RuntimeError("sortie vide")
+                    raise RuntimeError("empty output")
                 return LLMResult(text, None, attempt, time.time() - started, "opencode", self.model)
             except subprocess.TimeoutExpired:
-                last_error = f"timeout apres {self.timeout:.0f}s"
-            except Exception as exc:  # noqa: BLE001 - on journalise tout
+                last_error = f"timeout after {self.timeout:.0f}s"
+            except Exception as exc:  # noqa: BLE001 - everything is logged
                 last_error = str(exc)
             if attempt <= self.retries:
                 time.sleep(self.backoff * attempt)
@@ -149,17 +149,17 @@ class OpencodeClient:
 
 
 # --------------------------------------------------------------------------
-# http_api : PLACEHOLDER
+# http_api: PLACEHOLDER
 # --------------------------------------------------------------------------
 class HttpApiClient:
-    """PLACEHOLDER — non implemente volontairement.
+    """PLACEHOLDER — intentionally not implemented.
 
-    Si tu preferes un appel HTTP direct (cle API) plutot que le CLI opencode :
-      1. ecrire ici l'appel POST (module 'urllib.request' de la stdlib suffit,
-         pas besoin d'installer quoi que ce soit) ;
-      2. convertir system+user en messages [{role, content}] ;
-      3. retourner LLMResult(text, ...) comme les autres clients ;
-      4. passer llm.backend a "http_api" dans settings.json.
+    If you prefer a direct HTTP call (API key) over the opencode CLI:
+      1. write the POST here (the stdlib 'urllib.request' module is enough,
+         nothing needs to be installed);
+      2. convert system+user into messages [{role, content}];
+      3. return LLMResult(text, ...) like the other clients;
+      4. set llm.backend to "http_api" in settings.json.
     """
 
     def __init__(self, cfg: dict):
@@ -167,12 +167,12 @@ class HttpApiClient:
 
     def preflight(self) -> None:
         raise ClientError(
-            "backend 'http_api' n'est pas encore code (placeholder dans src/llm_client.py).\n"
-            "  -> utiliser llm.backend = 'opencode' ou 'dry_run'."
+            "backend 'http_api' is not implemented yet (placeholder in src/llm_client.py).\n"
+            "  -> use llm.backend = 'opencode' or 'dry_run'."
         )
 
     def generate(self, prompt: str, case: dict) -> LLMResult:
-        raise ClientError("HttpApiClient non implemente (placeholder).")
+        raise ClientError("HttpApiClient is not implemented (placeholder).")
 
 
 def get_client(cfg: dict):
@@ -183,4 +183,4 @@ def get_client(cfg: dict):
         return OpencodeClient(cfg)
     if backend == "http_api":
         return HttpApiClient(cfg)
-    raise ClientError(f"backend inconnu : {backend}")
+    raise ClientError(f"unknown backend: {backend}")

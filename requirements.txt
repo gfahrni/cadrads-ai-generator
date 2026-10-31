@@ -1,15 +1,15 @@
-# Aucune dépendance externe.
+# No external dependencies.
 #
-# Tout le projet repose sur la bibliothèque standard de Python (>= 3.10) :
-# pas de package à installer, pas de venv nécessaire.
+# The whole project relies on the Python standard library (>= 3.10):
+# nothing to install, no virtualenv required.
 #
-# Ce fichier existe pour deux raisons :
-#   1. un `pip install -r requirements.txt` ne fasse rien plutôt que d'échouer ;
-#   2. rendre l'absence de dépendances explicite pour qui audite le dépôt.
+# This file exists for two reasons:
+#   1. so that `pip install -r requirements.txt` does nothing instead of failing;
+#   2. to make the absence of dependencies explicit for anyone auditing the repo.
 #
-# Vérifier l'environnement :
-#     python3 --version          # doit afficher 3.10 ou plus
+# Check your environment:
+#     python3 --version          # must print 3.10 or later
 #     python3 tests/test_classify.py
 #
-# Si une dépendance est ajoutée un jour, l'épingler ici avec sa version exacte :
-# un dataset publié doit pouvoir être régénéré à l'identique.
+# If a dependency is ever added, pin it here with its exact version:
+# a published dataset must be reproducible bit for bit.

@@ -1,6 +1,6 @@
 {
-  "_source_note": "Prévalences choisies comme ORDRES DE GRANDEUR plausibles pour une population adressée en CCTA (adulte, 45-88 ans). Ce sont des PARAMÈTRES DE CONCEPTION, pas une donnée épidémiologique mesurée : le manuscrit ne doit pas présenter ces valeurs comme des prévalences établies. Elles sont publiées avec le code, versionnées dans chaque run (settings.snapshot.json), et modifiables sans toucher au code.",
-  "_verify": "À relire une fois avant le dataset final, pour vérifier que chaque ordre de grandeur reste défendable cliniquement (pas d'exigence de citation). Le paramètre other_structures.prevalence_scale permet en plus une analyse de sensibilité (ex. 0.5x / 2x) sans rien recoder.",
+  "_source_note": "Prevalences chosen as PLAUSIBLE ORDERS OF MAGNITUDE for a population referred for CCTA (adults, 45-88 years). They are DESIGN PARAMETERS, not measured epidemiological data: the manuscript must not present them as established prevalences. They ship with the code, are versioned in every run (settings.snapshot.json), and can be changed without touching the code.",
+  "_verify": "Review once before the final dataset, to check that each order of magnitude remains clinically defensible (no citation required). The other_structures.prevalence_scale parameter also allows a sensitivity analysis (e.g. 0.5x / 2x) without recoding anything.",
   "organs": {
     "aorta": {
       "en": [

@@ -1,98 +1,98 @@
 # CAD-RADS report generator
 
-Génère des rapports de scanner coronaire (CCTA) synthétiques **paramétrables**, pour
-la recherche sur les LLM. Aucune donnée patient, aucune dépendance externe
-(Python 3.10+ standard library uniquement).
+Generates **parameterizable** synthetic coronary CT angiography (CCTA) reports for
+research on large language models. No patient data, no external dependency
+(Python 3.10+ standard library only).
 
-> **Statut** : plomberie, plan, moteur de classification et contrôles testés
-> (70 tests, exécutés en CI). L'appel réel passe par le CLI `opencode` (voir
-> « Brancher ton compte opencode ») ; il n'a pas pu être validé dans
-> l'environnement de développement. Seul `backend: http_api` reste un placeholder.
+> **Status**: plumbing, plan, classification engine and checks are tested
+> (71 tests, run in CI). The real call goes through the `opencode` CLI (see
+> "Connecting opencode"); it could not be validated in the development
+> environment. Only `backend: http_api` remains a placeholder.
 
 ---
 
-## Démarrage rapide
+## Quick start
 
-Cinq étapes, dans l'ordre. Chacune indique ce que tu dois voir avant de passer à
-la suivante.
+Five steps, in order. Each one states what you should see before moving on.
 
-### 1. Prérequis
+### 1. Requirements
 
-Python 3.10+ et le CLI `opencode` connecté à ton compte. Aucun `pip install`
-n'est nécessaire : le projet n'utilise que la bibliothèque standard
-(`requirements.txt` documente cette absence).
-
-```bash
-python3 --version      # 3.10 ou plus
-opencode auth list     # doit lister au moins un fournisseur
-```
-
-### 2. Se placer dans le projet
+Python 3.10+ and the `opencode` CLI connected to your account. No `pip install`
+needed: the project only uses the standard library (`requirements.txt` documents
+that absence).
 
 ```bash
-cd cadrads-generator        # le dossier qui contient run.py
+python3 --version      # 3.10 or later
+opencode auth list     # must list at least one provider
 ```
 
-Peu importe le nom de ton dossier local : c'est ici le dépôt Git tel que cloné.
+### 2. Move into the project
 
-### 3. Se connecter
+```bash
+cd cadrads-generator        # the folder that contains run.py
+```
+
+The name of your local folder does not matter: this is the Git repository as cloned.
+
+### 3. Connect
 
 ```bash
 python3 login.py
 ```
 
-Choisis `1`. OpenCode ouvre son écran de connexion ; au retour, le script
-enchaîne tout seul sur un appel de test réel.
+Pick `1`. OpenCode opens its own sign-in screen; on return, the script
+immediately makes a real test call.
 
-**Attendu :** le message `Test REUSSI`, puis `Connexion validee`.
-`run.py` refuse de démarrer sans cette étape — c'est voulu, pas un bug.
+**Expected:** the message `Test SUCCEEDED`, then `Connection validated`.
+`run.py` refuses to start without this step — that is intentional, not a bug.
 
-### 4. Vérifier le plan, sans dépenser d'appel
+### 4. Check the plan, without spending a call
 
 ```bash
 python3 run.py --plan-only
 python3 run.py --show-prompt
 ```
 
-**Attendu :** les 10 cas listés avec leur label calculé, et `derive cible/calcule : 0`.
+**Expected:** the 10 cases listed with their computed label, and
+`target/computed drift: 0`.
 
-### 5. Un cas réel, puis le corpus
+### 5. One real case, then the corpus
 
 ```bash
-python3 run.py --limit 1          # un seul appel
-cat out/*/raw/SYN-0001.json       # prompt, réponse brute, contrôles
-python3 run.py                    # tout ce que dit settings.json
+python3 run.py --limit 1          # a single call
+cat out/*/raw/SYN-0001.json       # prompt, raw response, checks
+python3 run.py                    # everything settings.json asks for
 ```
 
-**Attendu :** en fin d'exécution, les compteurs `label present`,
-`modif. decrits`, `decouvr. decrites`.
+**Expected:** at the end, the counters `label present`, `modifiers shown`,
+`findings shown`.
 
-### Les options en un coup d'œil
+### All the options at a glance
 
-Sans aucune option, `run.py` exécute le pipeline complet : un appel au modèle par
-cas, rapports dans `reports/`, manifeste et résumés.
+With no option at all, `run.py` runs the full pipeline: one model call per case,
+reports in `reports/`, manifest and summaries.
 
-| Option | Effet | Appel au modèle | Écrit |
+| Option | Effect | Model call | Writes |
 |---|---|---|---|
-| `--settings PATH` | utiliser un autre fichier de configuration | — | — |
-| `--limit N` | ne traiter que les N premiers cas | selon le mode | selon le mode |
-| `--export-prompts` | écrire aussi chaque prompt dans `prompts/` | oui | `prompts/*.md` + `index.tsv` |
-| `--dry-run` | client factice, sorties isolées en `*-dryrun` | non | rapports factices |
-| `--prompt-only` | écrire tous les prompts, sans générer | **non** | `prompts/*.md` + `index.tsv` |
-| `--plan-only` | afficher le plan et les labels calculés | non | rien |
-| `--show-prompt` | afficher le prompt du premier cas | non | rien |
-| `--no-resume` | ignorer le manifeste existant | — | — |
-| `--no-probe` | ne pas refaire le test de connexion au démarrage | — | — |
-| `--quiet` | sortie minimale | — | — |
+| `--settings PATH` | use another configuration file | — | — |
+| `--limit N` | process only the first N cases | depends on the mode | depends on the mode |
+| `--export-prompts` | also write each prompt to `prompts/` | yes | `prompts/*.md` + `index.tsv` |
+| `--dry-run` | fake client, outputs isolated in `*-dryrun` | no | fabricated reports |
+| `--prompt-only` | write every prompt, generate nothing | **no** | `prompts/*.md` + `index.tsv` |
+| `--plan-only` | print the plan and the computed labels | no | nothing |
+| `--show-prompt` | print the first case prompt | no | nothing |
+| `--no-resume` | ignore the existing manifest | — | — |
+| `--no-probe` | skip the connection check at startup | — | — |
+| `--quiet` | minimal output | — | — |
 
-`--dry-run`, `--plan-only`, `--show-prompt` et `--prompt-only` sont **exclusifs
-entre eux** : argparse refuse les combinaisons et le dit explicitement.
-`--export-prompts` est composable avec un run normal ou un `--dry-run`.
+`--dry-run`, `--plan-only`, `--show-prompt` and `--prompt-only` are **mutually
+exclusive**: argparse rejects combinations and says so explicitly.
+`--export-prompts` composes with a normal run or with a `--dry-run`.
 
-`python3 run.py --help` liste la même chose, avec les valeurs par défaut.
+`python3 run.py --help` lists the same thing, with the defaults.
 
-`--prompt-only` est le moyen de relire les 2 000 prompts **avant** de dépenser
-2 000 appels :
+`--prompt-only` is the way to review the 2,000 prompts **before** spending 2,000
+calls:
 
 ```bash
 python3 run.py --prompt-only
@@ -100,130 +100,131 @@ ls out/*/prompts/ | head
 cat out/*/prompts/index.tsv
 ```
 
-### Si ça ne démarre pas
+### If it does not start
 
-| Message | Quoi faire |
+| Message | What to do |
 |---|---|
-| `[LOGIN] Aucune connexion validée` | lance `python3 login.py` |
-| `[LOGIN] ... validée avec une autre configuration` | tu as changé `llm.command` → relance `login.py` |
-| `commande introuvable : opencode` | `which opencode` dans ce même terminal, sinon corrige `llm.command` |
-| `[CONFIG] settings.json invalide` | le message liste les clés fautives et les valeurs admises |
-| sortie du modèle sale (préambule, logs) | voir la table du point 4 de « Brancher ton compte opencode » |
+| `[LOGIN] No validated connection for this project.` | run `python3 login.py` |
+| `[LOGIN] The connection was validated with another configuration` | you changed `llm.command` → re-run `login.py` |
+| `Command not found: 'opencode'` | `which opencode` in that same terminal, otherwise fix `llm.command` |
+| `Error: Model unavailable` | the model id does not exist for this provider → `login.py` option 2 |
+| `[CONFIG] invalid settings.json:` | the message lists the faulty keys and the allowed values |
+| dirty model output (preamble, logs) | see the table in point 4 of "Connecting opencode" |
 
-**Le seul fichier de réglage est `settings.json`.** `prompts/` et `reference/`
-sont aussi éditables, mais rien d'obligatoire pour démarrer.
+**The only configuration file is `settings.json`.** `prompts/` and `reference/`
+are editable too, but nothing is mandatory to get started.
 
-## Structure du projet
+## Project structure
 
 ```
-cadrads-generator/            (racine du dépôt)
-├── settings.json          ← config : le seul fichier que tu modifies
-├── login.py               ← connexion opencode + test réel (avant run.py)
-├── run.py                 ← point d'entrée de la génération
-├── prompts/               system.md + user.md, éditables (versionnés à chaque run)
+cadrads-generator/            (repository root)
+├── settings.json          ← config: the only file you edit
+├── login.py               ← opencode connection + real test (before run.py)
+├── run.py                 ← generation entry point
+├── prompts/               system.md + user.md, editable (versioned in every run)
 ├── reference/
-│   ├── cadrads_2_0.json           règles CAD-RADS (documentation)
-│   └── incidental_findings.json   catalogue des découvertes fortuites
+│   ├── cadrads_2_0.json           CAD-RADS rules (documentation)
+│   └── incidental_findings.json   catalogue of incidental findings
 ├── src/
-│   ├── config.py          chargement + validation de settings.json
-│   ├── planner.py         tirage stratifié et scénarios cliniques
-│   ├── classify.py        calcul déterministe du label CAD-RADS
-│   ├── incidental.py      tirage des découvertes fortuites
-│   ├── prompt.py          rendu des prompts
-│   ├── llm_client.py      appel du modèle (CLI opencode ; http_api = placeholder)
-│   ├── auth.py            connexion opencode + test d'appel
-│   ├── validate.py        nettoyage et contrôles automatiques
-│   └── store.py           manifeste, reprise, export
-└── tests/                 70 tests, stdlib uniquement
+│   ├── config.py          loading + validation of settings.json
+│   ├── planner.py         stratified draw and clinical scenarios
+│   ├── classify.py        deterministic computation of the CAD-RADS label
+│   ├── incidental.py      draw of the incidental findings
+│   ├── prompt.py          prompt rendering
+│   ├── llm_client.py      model call (opencode CLI; http_api = placeholder)
+│   ├── auth.py            opencode connection + call probe
+│   ├── validate.py        cleaning and automatic checks
+│   └── store.py           manifest, resume, export
+└── tests/                 71 tests, stdlib only
 ```
 
-Les fichiers de `src/` ne sont pas faits pour être modifiés à la main : tout le
-réglage passe par `settings.json`, `prompts/` et `reference/`.
+The files in `src/` are not meant to be edited by hand: all tuning happens through
+`settings.json`, `prompts/` and `reference/`.
 
 ---
 
-## Réglages : settings.json
+## Settings: settings.json
 
-Tout se règle ici. Une clé inconnue est ignorée ; une valeur invalide arrête le
-programme avec un message qui liste les valeurs admises.
+Everything is configured here. An unknown key is ignored; an invalid value stops
+the program with a message listing the allowed values.
 
-| Groupe | Clé | Défaut | Effet |
+| Group | Key | Default | Effect |
 |---|---|---|---|
-| `run` | `n_reports` | `10` | nombre de rapports à générer |
-| `run` | `run_id` | `"auto"` | `"auto"` = dossier neuf à chaque lancement ; une valeur fixe permet la reprise |
-| `run` | `seed` | `42` | graine du tirage : même seed ⇒ même plan |
-| `run` | `resume` | `true` | saute les cas déjà réussis |
-| `run` | `max_consecutive_errors` | `5` | arrête tout si le modèle ne répond plus |
-| `llm` | `backend` | `"opencode"` | `opencode`, `dry_run` ou `http_api` |
-| `llm` | `command` | `["opencode","run","--model",…,"{prompt}"]` | commande exacte ; `{prompt}` est remplacé |
-| `llm` | `model_label` | `"opencode/grok-code"` | ce qui est écrit dans la provenance — mets version + date |
-| `llm` | `timeout_s` / `retries` / `delay_between_calls_s` | `240` / `2` / `1.5` | robustesse et débit |
+| `run` | `n_reports` | `10` | number of reports to generate |
+| `run` | `run_id` | `"auto"` | `"auto"` = new folder on every launch; a fixed value enables resume |
+| `run` | `seed` | `42` | draw seed: same seed ⇒ same plan |
+| `run` | `resume` | `true` | skip cases that already succeeded |
+| `run` | `max_consecutive_errors` | `5` | stop everything if the model stops answering |
+| `llm` | `backend` | `"opencode"` | `opencode`, `dry_run` or `http_api` |
+| `llm` | `command` | `["opencode","run","--model",…,"{prompt}"]` | exact command; `{prompt}` is substituted |
+| `llm` | `model_label` | `"opencode/grok-code"` | what is written into provenance — put version + date |
+| `llm` | `timeout_s` / `retries` / `delay_between_calls_s` | `240` / `2` / `1.5` | robustness and throughput |
 | `generation` | `languages` | `["en"]` | `en`, `fr`, `de`, `it` |
 | `generation` | `style` | `"random"` | `free`, `structured`, `random` |
-| `generation` | `cadrads_weights` | voir fichier | distribution visée des catégories |
-| `generation` | `modifier_weights` | voir fichier | fréquence de S, G, E, V, N |
-| `generation` | `age_range` / `sex` / `indication` | `[45,88]` / `random` / `stable` | population simulée |
-| `other_structures` | `describe_normal` | `false` | décrire les organes du champ de vue |
-| `other_structures` | `include_incidental` | `false` | ajouter des découvertes fortuites mineures |
-| `other_structures` | `prevalence_scale` / `max_per_case` | `1.0` / `3` | dosage et plafond des découvertes |
-| `checks` | `label_integrity` / `modifier_mention` / `incidental_mention` | `fail` / `warn` / `warn` | `fail` exclut, `warn` signale, `off` ignore |
-| `checks` | `min_words` / `max_words` | `35` / `800` | longueur acceptée |
-| `export` | `filename` | `"{case_id}_{cadrads}_{lang}"` | nom des `.txt` |
+| `generation` | `cadrads_weights` | see file | target distribution of the categories |
+| `generation` | `modifier_weights` | see file | frequency of S, G, E, V, N |
+| `generation` | `age_range` / `sex` / `indication` | `[45,88]` / `random` / `stable` | simulated population |
+| `other_structures` | `describe_normal` | `false` | describe the organs of the field of view |
+| `other_structures` | `include_incidental` | `false` | add minor incidental findings |
+| `other_structures` | `prevalence_scale` / `max_per_case` | `1.0` / `3` | dosing and cap of the findings |
+| `checks` | `label_integrity` / `modifier_mention` / `incidental_mention` | `fail` / `warn` / `warn` | `fail` excludes, `warn` flags, `off` ignores |
+| `checks` | `min_words` / `max_words` | `35` / `800` | accepted length |
+| `export` | `filename` | `"{case_id}_{cadrads}_{lang}"` | name of the `.txt` files |
 
-Chaque clé porte aussi son explication dans le fichier (`_doc`), donc
-`settings.json` reste lisible sans revenir ici.
+Every key also carries its explanation inside the file (`_doc`), so
+`settings.json` stays readable without coming back here.
 
 ---
 
-## Le label CAD-RADS est calculé, jamais généré
+## The CAD-RADS label is computed, never generated
 
-`src/classify.py` implémente les règles de CAD-RADS 2.0 et **calcule** le label à
-partir des lésions. Ce label est ensuite **imposé** au LLM dans le prompt
-(« Reproduce this classification verbatim »). Conséquence : le label et les
-lésions du prompt ne peuvent pas être incohérents.
+`src/classify.py` implements the CAD-RADS 2.0 rules and **computes** the label from
+the lesions. That label is then **imposed** on the LLM in the prompt ("Reproduce
+this classification verbatim"). Consequence: the label and the lesions in the
+prompt cannot be inconsistent.
 
-Règles appliquées, par ordre de priorité (sur la sténose la plus sévère) :
+Rules applied, in order of precedence (on the most severe stenosis):
 
-| # | Condition | Catégorie |
+| # | Condition | Category |
 |---|---|---|
-| 1 | segment non diagnostique **et** aucune sténose ≥ 50 % | `N` |
-| 2 | occlusion totale (100 %) | `5` |
-| 3 | tronc commun ≥ 50 % **ou** 3 vaisseaux ≥ 70 % | `4B` |
-| 4 | ≥ 70 % (1 ou 2 vaisseaux) | `4A` |
+| 1 | non-diagnostic segment **and** no stenosis ≥ 50 % | `N` |
+| 2 | total occlusion (100 %) | `5` |
+| 3 | left main ≥ 50 % **or** 3 vessels ≥ 70 % | `4B` |
+| 4 | ≥ 70 % (1 or 2 vessels) | `4A` |
 | 5 | 50–69 % | `3` |
 | 6 | 25–49 % | `2` |
 | 7 | 1–24 % | `1` |
-| 8 | aucune plaque | `0` |
+| 8 | no plaque | `0` |
 
-Le label final est composé dans l'ordre `CAD-RADS <catégorie>/<P>/<modificateurs>`,
-modificateurs triés `N, S, G, E, V` (ex. `CAD-RADS 3/P2/N/S`). Les modificateurs
-sans objet sont écartés (pas de stent en CAD-RADS 0, pas de `N` sans segment non
-diagnostique) et la décision est tracée dans `classification_trace`.
+The final label is composed as `CAD-RADS <category>/<P>/<modifiers>`, with
+modifiers sorted `N, S, G, E, V` (e.g. `CAD-RADS 3/P2/N/S`). Inapplicable
+modifiers are dropped (no stent in CAD-RADS 0, no `N` without a non-diagnostic
+segment) and the decision is traced in `classification_trace`.
 
-**Distribution garantie.** La catégorie visée sert à générer un scénario plausible,
-puis la catégorie est *recalculée* depuis les lésions. Si les deux divergent, la
-valeur calculée est retenue et le cas est marqué `target_ok: false`. Sur 2 000 cas
-avec les poids par défaut : **0 dérive**, distribution exacte.
+**Guaranteed distribution.** The target category is used to generate a plausible
+scenario, then the category is *recomputed* from the lesions. If the two diverge,
+the computed value is kept and the case is flagged `target_ok: false`. Over 2,000
+cases with the default weights: **0 drift**, exact distribution.
 
 ---
 
-## Autres structures et découvertes fortuites
+## Other structures and incidental findings
 
-Deux options **indépendantes, désactivées par défaut**, dans `settings.json >
-other_structures` :
+Two **independent options, disabled by default**, in `settings.json >
+other_structures`:
 
-| Option | Effet | Change |
+| Option | Effect | Changes |
 |---|---|---|
-| `describe_normal` | le rapport décrit poumons, plèvre, médiastin, aorte, péricarde **normaux** | la forme du rapport |
-| `include_incidental` | ajoute des anomalies **mineures** tirées à leur prévalence approximative | le contenu |
+| `describe_normal` | the report describes lungs, pleura, mediastinum, aorta, pericardium as **normal** | the shape of the report |
+| `include_incidental` | adds **minor** abnormalities drawn at their approximate prevalence | the content |
 
-Ce sont bien deux choses différentes : décrire des organes sains (rapport complet)
-n'est pas la même chose qu'ajouter des trouvailles fortuites.
+These are genuinely two different things: describing healthy organs (a complete
+report) is not the same as adding incidental findings.
 
-### Le catalogue
+### The catalogue
 
-`reference/incidental_findings.json` contient 14 découvertes (aorte, péricarde,
-valves, ventricule, poumons, plèvre, rachis, abdomen supérieur), chacune avec :
+`reference/incidental_findings.json` holds 14 findings (aorta, pericardium, valves,
+ventricle, lungs, pleura, spine, upper abdomen), each with:
 
 ```json
 { "id": "aortic_calcification", "organ": "aorta",
@@ -231,177 +232,175 @@ valves, ventricule, poumons, plèvre, rachis, abdomen supérieur), chacune avec 
   "prevalence": 0.30, "age_min": 60, "sex": "any" }
 ```
 
-Le tirage applique `prevalence × prevalence_scale`, ignore la découverte si
-`age < age_min` ou si le sexe ne correspond pas, et plafonne à `max_per_case`
-(3 par défaut). Résultat mesuré sur 3 000 cas : prevalence observée **conforme au
-catalogue** (± 0,5 point), 34 % des patients sans aucune découverte, 1,07 en
-moyenne par patient.
+The draw applies `prevalence × prevalence_scale`, skips the finding when
+`age < age_min` or when the sex does not match, and caps at `max_per_case`
+(3 by default). Measured over 3,000 cases: observed prevalence **matches the
+catalogue** (± 0.5 point), 34 % of patients with no finding at all, 1.07 on average
+per patient.
 
-> **Cadrage** : ce sont des ordres de grandeur assumés comme **paramètres de
-> conception**, pas une épidémiologie mesurée. Ils sont livrés avec le code,
-> versionnés à chaque exécution et modifiables ; `prevalence_scale` permet une
-> analyse de sensibilité sans rien recoder.
+> **Framing**: these are orders of magnitude accepted as **design parameters**, not
+> a measured epidemiology. They ship with the code, are versioned in every run and
+> can be edited; `prevalence_scale` allows a sensitivity analysis without recoding
+> anything.
 
-> **Effet du plafond** : avec `max_per_case: 2`, les découvertes fréquentes
-> chutent de ~12 % (le plafond tronque). À 3, l'écart disparaît. Si tu veux des
-> prévalences exactes, monte le plafond.
+> **Effect of the cap**: with `max_per_case: 2`, frequent findings drop by about
+> 12 % (the cap truncates the draw). At 3, the gap disappears. If you want exact
+> prevalences, raise the cap.
 
-### Dans le rapport
+### In the report
 
-Les découvertes sont listées séparément dans le prompt et le modèle doit les
-décrire, en les plaçant après les coronaires et avant l'impression. Un contrôle
-vérifie qu'elles sont **effectivement évoquées** (voir tableau ci-dessous).
+The findings are listed separately in the prompt and the model has to describe
+them, placing them after the coronaries and before the impression. A check
+verifies that they are **actually mentioned** (see the table below).
 
 ---
 
-## Brancher ton compte opencode
+## Connecting opencode
 
-### 0. En deux mots
+### In a word
 
 ```bash
-python3 login.py     # une fois, puis quand tu changes de compte ou de modèle
+python3 login.py     # once, then whenever you change account or model
 python3 run.py
 ```
 
-`login.py` affiche l'état de connexion, te laisse te connecter (compte) ou coller
-une clé API, puis fait **un vrai appel de test**. `run.py` **refuse de tourner**
-tant que ce test n'a pas réussi, et refait un test court au démarrage (1 appel)
-pour détecter un compte expiré entre deux lancements. `--no-probe` saute ce test.
+`login.py` shows the connection status, lets you sign in (account) or paste an API
+key, then makes **a real test call**. `run.py` **refuses to start** until that test
+has succeeded, and repeats a short test at startup (1 call) to catch an account that
+expired between two launches. `--no-probe` skips that test.
 
-Le feu vert est aussi **lié à la configuration** : si tu changes `llm.command`
-(modèle, fournisseur), l'état précédent est considéré comme périmé et `run.py`
-redemande un `login.py`. Un « validé » obtenu avec un modèle ne vaut rien pour un autre.
+The green light is also **tied to the configuration**: if you change `llm.command`
+(model, provider), the previous state is considered stale and `run.py` asks for a
+`login.py` again. A "validated" obtained with one model is worth nothing for another.
 
-Ce que contient `.state/login.json` : uniquement le *résultat* du test (date,
-modèle, latence, ok/échec). **Jamais de clé.** Le fichier est jetable : le
-supprimer oblige simplement à repasser par `login.py`.
+`.state/login.json` contains only the *result* of the test (date, model, latency,
+ok/failure). **Never a key.** The file is disposable: deleting it simply means going
+through `login.py` again.
 
-### Le principe : deux couches
+### The principle: two layers
 
-Deux couches bien séparées — c'est ce qui protège tes clés :
+Two well-separated layers — this is what protects your keys:
 
-1. **OpenCode gère l'authentification.** Tu te connectes une fois, les
-   identifiants vont dans `~/.local/share/opencode/auth.json`. Le projet ne voit
-   jamais la clé.
-2. **Le projet ne fait que lancer une commande.** `settings.json > llm.command`
-   est le template exact de cette commande.
+1. **OpenCode handles authentication.** You sign in once, the credentials go to
+   `~/.local/share/opencode/auth.json`. The project never sees the key.
+2. **The project only launches a command.** `settings.json > llm.command` is the
+   exact template of that command.
 
-> Ne mets **jamais** de clé dans `settings.json` : ce fichier est recopié dans
-> `out/<run_id>/settings.snapshot.json` à chaque exécution. La clé finirait
-> archivée dans les sorties du dataset.
+> Never put a key in `settings.json`: that file is copied into
+> `out/<run_id>/settings.snapshot.json` on every execution. The key would end up
+> archived in the dataset outputs.
 
-### 1. Connecter le compte
+### 1. Connect the account
 
 ```bash
-opencode auth login       # choisir le provider, coller la clé s'il la demande
-opencode auth list        # doit lister le provider connecté
-opencode models           # ids exacts, format provider/model
-opencode models --refresh # si un modèle vient d'être ajouté
+opencode auth login       # pick the provider, paste the key if asked
+opencode auth list        # must list the connected provider
+opencode models           # exact ids, provider/model format
+opencode models --refresh # if a model was just added
 ```
 
-### 2. Récupérer l'identifiant exact du modèle
+### 2. Get the exact model identifier
 
-`opencode models` renvoie des lignes `provider/model`. C'est cette chaîne, et rien
-d'autre, qu'il faut mettre dans `--model`.
+`opencode models` returns `provider/model` lines. That string, and nothing else, is
+what goes into `--model`.
 
-> **Piège fréquent** : « OpenCode Console » est un **fournisseur** (le compte), pas
-> un modèle. Le plan gratuit ne donne pas un id de modèle unique : il donne accès à
-> ceux listés par `opencode models`. Un id périmé produit
-> `Error: Model unavailable` — l'option 2 de `login.py` liste les ids réels et peut
-> écrire le bon dans `settings.json`.
+> **Common trap**: "OpenCode Console" is a **provider** (the account), not a model.
+> The free plan does not give a single model id: it gives access to the ones listed
+> by `opencode models`. A stale id produces `Error: Model unavailable` — option 2 of
+> `login.py` lists the real ids and can write the right one into `settings.json`.
 
-### 3. Écrire la commande
+### 3. Write the command
 
 ```json
 "llm": {
   "backend": "opencode",
-  "command": ["opencode", "run", "--model", "PROVIDER/MODELE", "{prompt}"],
-  "model_label": "PROVIDER/MODELE@2026-10-31"
+  "command": ["opencode", "run", "--model", "PROVIDER/MODEL", "{prompt}"],
+  "model_label": "PROVIDER/MODEL@2026-10-31"
 }
 ```
 
-Variante recommandée : isoler l'agent dans un dossier vide, pour qu'il ne parte
-pas explorer le dépôt pendant qu'il rédige un rapport.
+Recommended variant: isolate the agent in an empty folder, so it does not start
+exploring the repository while writing a report.
 
 ```json
-"command": ["opencode", "run", "--model", "PROVIDER/MODELE",
+"command": ["opencode", "run", "--model", "PROVIDER/MODEL",
             "--dir", "/tmp/cadrads-scratch", "{prompt}"]
 ```
 
 ```bash
-mkdir -p /tmp/cadrads-scratch   # une seule fois
+mkdir -p /tmp/cadrads-scratch   # once
 ```
 
-`{prompt}` est remplacé par le prompt complet, en **un seul argument** (pas de
-shell, pas d'échappement à gérer). Le prompt fait ~2 Ko : très loin de la limite
-`ARG_MAX`. Le repli par stdin de `src/llm_client.py` ne s'applique pas ici, car
-`opencode run` attend le message en argument positionnel.
+`{prompt}` is replaced by the full prompt, as **a single argument** (no shell, no
+escaping to handle). The prompt is ~2 KB: far below the `ARG_MAX` limit. The stdin
+fallback of `src/llm_client.py` does not apply here, because `opencode run` expects
+the message as a positional argument.
 
-### 4. Tester dans le shell avant de lancer le pipeline
+### 4. Test in the shell before running the pipeline
 
 ```bash
-opencode run --model PROVIDER/MODELE --dir /tmp/cadrads-scratch \
+opencode run --model PROVIDER/MODEL --dir /tmp/cadrads-scratch \
   "Write a 3-line synthetic coronary CTA report ending with the line CAD-RADS 0"
 
-opencode stats --days 1     # tokens et coût de l'essai, pour extrapoler 2000 appels
+opencode stats --days 1     # tokens and cost of the trial, to extrapolate 2000 calls
 ```
 
-Regarde si la sortie contient **uniquement** le rapport. Si l'agent ajoute un
-préambule, des logs ou un bloc de code, trois options :
+Check that the output contains **only** the report. If the agent adds a preamble,
+logs or a code block, three options:
 
-| Symptôme | Correctif |
+| Symptom | Fix |
 |---|---|
-| préambule / « Here is the report » | déjà géré par `clean()` dans `src/validate.py` |
-| blocs de code (triple backtick) | déjà géré par `clean()` |
-| logs ou événements mêlés | ajouter `--format json` puis parser les événements (à coder dans `llm_client.py`) |
-| lenteur au démarrage | `opencode serve` une fois, puis ajouter `--attach http://localhost:4096` |
+| preamble / "Here is the report" | already handled by `clean()` in `src/validate.py` |
+| code blocks (triple backtick) | already handled by `clean()` |
+| mixed logs or events | add `--format json` then parse the events (to code in `llm_client.py`) |
+| slow startup | `opencode serve` once, then add `--attach http://localhost:4096` |
 
-### 5. Puis dans le pipeline
+### 5. Then in the pipeline
 
 ```bash
-python3 run.py --show-prompt     # copier-coller ce prompt dans la commande du point 4
-python3 run.py --limit 1         # 1 vrai appel
-cat out/*/raw/SYN-0001.json      # vérifier prompt + réponse brute
-python3 run.py --limit 10        # l'échantillon de contrôle
+python3 run.py --show-prompt     # paste this prompt into the command from point 4
+python3 run.py --limit 1         # 1 real call
+cat out/*/raw/SYN-0001.json      # check prompt + raw response
+python3 run.py --limit 10        # the control sample
 ```
 
-### Choisir une clé API plutôt que le compte
+### Choosing an API key instead of the account
 
-Deux routes, sans rien changer au projet :
+Two routes, without changing anything in the project:
 
-- `opencode auth login --provider <id>` : la clé va dans `auth.json`, utilisée
-  automatiquement ensuite ;
-- variables d'environnement du provider (ex. `ANTHROPIC_API_KEY`), qu'OpenCode
-  lit au démarrage, y compris depuis un `.env` du dossier courant.
+- `opencode auth login --provider <id>`: the key goes to `auth.json`, used
+  automatically afterwards;
+- provider environment variables (e.g. `ANTHROPIC_API_KEY`), which OpenCode reads at
+  startup, including from a `.env` file in the current folder.
 
-`backend: "http_api"` reste un placeholder vide dans `src/llm_client.py`
-(classe `HttpApiClient`) si tu veux un appel HTTP direct plus tard.
+`backend: "http_api"` remains an empty placeholder in `src/llm_client.py`
+(`HttpApiClient` class) if you want a direct HTTP call later.
 
-## Ce qui est produit
+## What is produced
 
 ```
 out/<run_id>/
-├── reports/              .txt acceptés (le dataset)
-├── prompts/              prompts rendus (avec --export-prompts ou --prompt-only)
-│                         ├── SYN-0001.md  (le prompt exact, rien d'ajouté)
-│                         └── index.tsv    case_id, label, langue, style, sha
-├── reports_rejected/     .txt exclus par un contrôle automatique
-├── raw/<case_id>.json    prompt complet + réponse brute + contrôles + trace
-├── manifest.jsonl        une ligne JSON par tentative (registre + audit)
-├── reports_index.csv     tableau prêt à ouvrir
-├── summary.json          comptages par strate, contrôles, dérive du plan
-├── run.json              identifiant + empreinte de config (garde-fou)
-├── settings.snapshot.json  config exacte utilisée
-├── prompts.snapshot.json   prompts exacts utilisés
-└── PROVENANCE.txt        horodatage, empreinte de config, modèle
+├── reports/              .txt accepted (the dataset)
+├── prompts/              rendered prompts (with --export-prompts or --prompt-only)
+│                         ├── SYN-0001.md  (the exact prompt, nothing added)
+│                         └── index.tsv    case_id, label, language, style, sha
+├── reports_rejected/     .txt excluded by an automatic check
+├── raw/<case_id>.json    full prompt + raw response + checks + trace
+├── manifest.jsonl        one JSON line per attempt (register + audit)
+├── reports_index.csv     table ready to open
+├── summary.json          counts per stratum, checks, plan drift
+├── run.json              identifier + config fingerprint (guard)
+├── settings.snapshot.json  exact configuration used
+├── prompts.snapshot.json   exact prompts used
+└── PROVENANCE.txt        timestamp, config fingerprint, model
 ```
 
-En `--dry-run`, le `run_id` est suffixé `-dryrun` et le manifeste porte
-`dry_run: true` : les sorties factices ne peuvent pas contaminer un vrai run.
+With `--dry-run`, the `run_id` is suffixed `-dryrun` and the manifest carries
+`dry_run: true`: fabricated outputs cannot contaminate a real run.
 
-### À quoi ressemble un rapport
+### What a report looks like
 
-Chaque `.txt` est un rapport complet, terminé par le label imposé :
+Each `.txt` is a complete report, ending with the imposed label:
 
 ```
 Indication: evaluation of coronary artery disease in a 67-year-old patient.
@@ -412,154 +411,152 @@ Impression: severe stenosis of the proximal LAD.
 CAD-RADS 4A/P2/S
 ```
 
-*Exemple de forme : la rédaction exacte dépend du modèle et du style demandé
-(libre ou structuré).*
+*Shape example: the exact wording depends on the model and on the requested style
+(free or structured).*
 
-### À quoi ressemble une ligne de manifeste
+### What a manifest line looks like
 
 ```json
 {"case_id": "SYN-0001", "status": "ok", "file": "reports/SYN-0001_4A_en.txt",
  "expected": {"cadrads": "4A", "label": "CAD-RADS 4A/P2/S", "language": "en"},
  "checks": {"ok": true, "results": {"label": {"ok": true, "category_found": "4A"}}},
- "meta": {"attempts": 1, "latency_s": 6.4, "model": "provider/modele@2026-10-31",
+ "meta": {"attempts": 1, "latency_s": 6.4, "model": "provider/model@2026-10-31",
           "prompt_sha": "1c8cb9d454eb41fb", "dry_run": false},
  "timestamp": "2026-10-31T12:05:00"}
 ```
 
-`status` vaut `ok`, `excluded` (rejeté par un contrôle automatique) ou `error`
-(échec technique). Ce fichier est la source de vérité pour la reprise et l'audit :
-c'est lui qui permet de republier un corpus sans le régénérer.
+`status` is `ok`, `excluded` (rejected by an automatic check) or `error` (technical
+failure). This file is the source of truth for resume and audit: it is what lets you
+republish a corpus without regenerating it.
 
 ---
 
-## Reprise
+## Resume
 
-Le manifeste sert de registre : `resume: true` saute les cas déjà réussis et
-**retente** ceux qui ont échoué. `run.max_consecutive_errors` interrompt le run si
-l'API est cassée, plutôt que de brûler 2 000 appels.
+The manifest is the register: `resume: true` skips cases that already succeeded and
+**retries** those that failed. `run.max_consecutive_errors` stops the run if the
+model stops answering, rather than burning 2,000 calls.
 
-**Reprendre suppose un `run_id` explicite.**
+**Resuming requires an explicit `run_id`.**
 
-| `run.run_id` | Comportement |
+| `run.run_id` | Behaviour |
 |---|---|
-| `"auto"` (défaut) | **nouveau dossier à chaque lancement** (horodatage + suffixe aléatoire) → la reprise ne s'applique pas |
-| `"etude-1"` | dossier fixe → la reprise fonctionne |
+| `"auto"` (default) | **new folder on every launch** (timestamp + random suffix) → resume does not apply |
+| `"study-1"` | fixed folder → resume works |
 
-Le suffixe aléatoire évite que deux lancements dans la même seconde écrasent le
-même dossier. Pour une collecte de 2 000 rapports, **fixe `run_id`** dès le départ.
+The random suffix prevents two launches within the same second from overwriting the
+same folder. For a 2,000-report collection, **set `run_id`** from the start.
 
-**Garde-fou de provenance** : un dossier de run ne peut pas être réutilisé avec une
-autre configuration. Le `settings_fingerprint` est comparé à `run.json` ; en cas
-d'écart le programme refuse (exit 2) au lieu de produire un snapshot mensonger.
+**Provenance guard**: a run folder cannot be reused with another configuration. The
+`settings_fingerprint` is compared against `run.json`; on mismatch the program
+refuses (exit 2) instead of producing a misleading snapshot.
 
 ---
 
-## Contrôles automatiques
+## Automatic checks
 
-| Contrôle | Mesure | Réglage |
+| Check | Measure | Setting |
 |---|---|---|
-| `label` | le label calculé est présent, verbatim | `checks.label_integrity` |
-| `modifiers` | stent / pontage / segment non diagnostique sont-ils **décrits dans le corps** (pas seulement dans le label) | `checks.modifier_mention` |
-| `incidental` | chaque découverte fortuite est évoquée dans le corps (correspondance par organe) | `checks.incidental_mention` |
-| `language` | langue détectée == langue demandée | `checks.language_match` |
-| `length` | nombre de mots dans l'intervalle | `checks.min_words` / `max_words` |
-| `forbidden` | pas de « as an AI », de bloc de code, de « language model » | `checks.forbidden_phrases` |
+| `label` | the computed label is present, verbatim | `checks.label_integrity` |
+| `modifiers` | are the stent / graft / non-diagnostic segment **described in the body** (not just in the label) | `checks.modifier_mention` |
+| `incidental` | is each incidental finding mentioned in the body (match by organ) | `checks.incidental_mention` |
+| `language` | detected language == requested language | `checks.language_match` |
+| `length` | word count within the range | `checks.min_words` / `max_words` |
+| `forbidden` | no "as an AI", no code block, no "language model" | `checks.forbidden_phrases` |
 
-`fail` ⇒ rapport déplacé dans `reports_rejected/`. `warn` ⇒ conservé + drapeau.
-Les taux sont agrégés dans `summary.json`.
+`fail` ⇒ the report is moved to `reports_rejected/`. `warn` ⇒ kept and flagged.
+The rates are aggregated in `summary.json`.
 
-Ces contrôles sont **lexicaux**. Un rapport peut tous les passer et rester
-cliniquement incohérent : c'est précisément le rôle des 2 lecteurs experts.
+These checks are **lexical**. A report can pass all of them and remain clinically
+incoherent: that is precisely the role of the expert readers.
 
 ---
 
 ## Tests
 
 ```bash
-python3 tests/test_classify.py     # 18 tests  — règles CAD-RADS
-python3 tests/test_incidental.py   # 16 tests  — prévalences, gating, plafond
-python3 tests/test_validate.py     # 16 tests  — nettoyage et contrôles
-python3 tests/test_auth.py         #  8 tests  — état de connexion, chemin d'échec
-python3 tests/test_cli.py          #  7 tests  — flags, exclusivité, export, doc à jour
-python3 tests/test_config.py       #  5 tests  — réécriture du modèle dans settings.json
+python3 tests/test_classify.py     # 18 tests  — CAD-RADS rules
+python3 tests/test_incidental.py   # 16 tests  — prevalences, gating, cap
+python3 tests/test_validate.py     # 16 tests  — cleaning and checks
+python3 tests/test_auth.py         #  8 tests  — connection state, failure path
+python3 tests/test_cli.py          #  7 tests  — flags, exclusivity, export, docs up to date
+python3 tests/test_config.py       #  6 tests  — rewriting the model in settings.json
 ```
 
-Couvrent : seuils de sténose, occlusion, tronc commun, 3 vaisseaux, précédence
-`5 > 4B`, cas non diagnostique, filtrage des modificateurs, cohérence du plaque
-burden, format du label ; prévalences conformes au catalogue, respect de
-`age_min` / `sex`, plafond, exclusion, déterminisme ; nettoyage des préambules et
-blocs de code, tolérance du label, mention des modificateurs et des découvertes.
+They cover: stenosis thresholds, occlusion, left main, three vessels, `5 > 4B`
+precedence, non-diagnostic cases, modifier filtering, plaque burden consistency,
+label format; prevalences matching the catalogue, `age_min` / `sex` gating, cap,
+exclusion, determinism; preamble and code-block cleaning, label tolerance, mentions
+of modifiers and findings; connection state and its failure path.
 
-70 tests, stdlib uniquement. Ils tournent aussi en intégration continue
-(`.github/workflows/tests.yml`, Python 3.10 à 3.14) : c'est la preuve que le label
-imposé est conforme et que le tirage est reproductible.
-
----
-
-## Reproducibilité
-
-- Tirage déterministe : même `run.seed` ⇒ même plan (catégories, âges, vaisseaux, labels).
-- `settings.snapshot.json` + `prompts.snapshot.json` + `PROVENANCE.txt` archivés à chaque run.
-- `raw/` conserve la réponse brute et la trace de classification.
-- **Figer** le nom de modèle avec sa version et la date dans `model_label`
-  (ex. `grok-code@2026-10-31`) : un modèle mis à jour silencieusement rend le
-  dataset non reproductible.
+71 tests, standard library only. They also run in continuous integration
+(`.github/workflows/tests.yml`, Python 3.10 to 3.14): that is the proof that the
+imposed label follows the rules and that the draw is reproducible.
 
 ---
 
-## Avant une grosse collecte
+## Reproducibility
 
-1. Les quatre suites de tests passent.
-2. `llm.model_label` porte la **version et la date** du modèle.
-3. Trois rapports relus avec `--limit 3` avant de lancer 2 000 appels.
-4. `run_id` fixé dans `settings.json`, sinon aucune reprise n'est possible.
-
-## Limites de l'outil
-
-- **Précédence `5 > 4B`** : lorsqu'une occlusion et une atteinte du tronc commun
-  coexistent, la catégorie la plus élevée est retenue. C'est une convention, à
-  changer en une ligne dans `classify_category` si tu préfères l'inverse.
-- **Plaque burden semi-quantitatif** : le consensus ne fournit pas de formule
-  fermée ; ici `P` est contraint par la catégorie et par le nombre de vaisseaux
-  atteints, pas calculé par une équation.
-- **Anatomie simplifiée** : pas de dominance, de collatérales, de score calcique
-  segmentaire, ni de FFR-CT.
-- **Découvertes fortuites mineures uniquement** : aucune masse, lymphadénopathie,
-  embolie pulmonaire ni anévrisme significatif. Le corpus est donc plus propre
-  qu'une vraie cohorte.
-- **Contrôles automatiques lexicaux** : un rapport peut tous les passer et rester
-  cliniquement incohérent.
-- **Homogénéité du corpus non mesurée** par l'outil (post-traitement : distinct-n,
-  templates, clusters d'embeddings).
-- **Usage recherche uniquement.** Ces rapports ne sont pas des rapports médicaux.
+- Deterministic draw: same `run.seed` ⇒ same plan (categories, ages, vessels, labels).
+- `settings.snapshot.json` + `prompts.snapshot.json` + `PROVENANCE.txt` archived on every run.
+- `raw/` keeps the raw response and the classification trace.
+- **Pin** the model name with its version and date in `model_label`
+  (e.g. `grok-code@2026-10-31`): a silently updated model makes the dataset
+  non-reproducible.
 
 ---
 
-## Licence
+## Before a big collection
 
-MIT — voir [LICENSE](LICENSE). Le texte inclut un avertissement médical : ce
-logiciel produit des rapports synthétiques à des fins de recherche, pas des
-rapports médicaux.
+1. All the test suites pass.
+2. `llm.model_label` carries the **version and date** of the model.
+3. Three reports reviewed with `--limit 3` before launching 2,000 calls.
+4. `run_id` fixed in `settings.json`, otherwise no resume is possible.
 
-Si ton institution impose Apache-2.0 ou une autre licence, remplace simplement le
-fichier `LICENSE` et le champ `license` de `CITATION.cff`.
+## Tool limits
 
-## Citer ce travail
+- **`5 > 4B` precedence**: when an occlusion and a left main lesion coexist, the
+  higher category is kept. That is a convention; change it on one line in
+  `classify_category` if you prefer the opposite.
+- **Semi-quantitative plaque burden**: the consensus provides no closed formula;
+  here `P` is constrained by the category and by the number of diseased vessels, not
+  computed by an equation.
+- **Simplified anatomy**: no dominance, no collaterals, no segmental calcium score,
+  no CT-FFR.
+- **Minor incidental findings only**: no mass, lymphadenopathy, pulmonary embolism or
+  significant aneurysm. The corpus is therefore cleaner than a real cohort.
+- **Lexical automatic checks**: a report can pass all of them and remain clinically
+  incoherent.
+- **Corpus homogeneity not measured** by the tool (post-processing: distinct-n,
+  templates, embedding clusters).
+- **Research use only.** These reports are not medical reports.
 
-`CITATION.cff` fournit les métadonnées (GitHub affiche alors un bouton
-« Cite this repository »). Deux champs sont à corriger avant la publication :
+---
 
-- `repository-code` : l'URL réelle du dépôt ;
+## License
+
+MIT — see [LICENSE](LICENSE). The text includes a medical disclaimer: this software
+produces synthetic reports for research, not medical reports.
+
+If your institution requires Apache-2.0 or another license, simply replace the
+`LICENSE` file and the `license` field of `CITATION.cff`.
+
+## Citing this work
+
+`CITATION.cff` provides the metadata (GitHub then shows a "Cite this repository"
+button). Two fields must be corrected before publication:
+
+- `repository-code`: the real repository URL;
 - `date-released`.
 
-Une fois l'article publié, ajouter la référence à la section `preferred-citation`.
+Once the article is published, add the reference to the `preferred-citation` section.
 
-## Données et disponibilité du code
+## Data and availability
 
-- Le **code** est publié ici. Il suffit à régénérer le corpus : le plan est
-  déterministe (`run.seed`), les prompts sont versionnés dans chaque run.
-- Le **dataset** généré (rapports `.txt` + `manifest.jsonl` + `summary.json`) n'a
-  pas sa place dans ce dépôt : il se dépose sur Zenodo avec un DOI, et se cite
-  via le bloc `preferred-citation` de `CITATION.cff`.
-- Les **prompts exacts** utilisés sont archivés dans chaque `out/<run_id>/`, donc
-  un corpus publié reste auditable même si `prompts/` évolue ensuite.
+- The **code** is published here. It is enough to regenerate the corpus: the plan is
+  deterministic (`run.seed`) and the prompts are versioned in every run.
+- The generated **dataset** (`.txt` reports + `manifest.jsonl` + `summary.json`) does
+  not belong in this repository: it is deposited on Zenodo with a DOI, and cited via
+  the `preferred-citation` block of `CITATION.cff`.
+- The **exact prompts** used are archived in every `out/<run_id>/`, so a published
+  corpus remains auditable even if `prompts/` changes later.

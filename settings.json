@@ -1,7 +1,7 @@
 {
-  "_doc": "SEUL FICHIER À MODIFIER. Lancement : python3 run.py   (ou : python3 run.py --dry-run )",
+  "_doc": "THE ONLY FILE YOU NEED TO EDIT. Run: python3 run.py   (or: python3 run.py --dry-run )",
   "run": {
-    "_doc": "run_id 'auto' = identifiant horodaté. resume=true reprend un run interrompu sans régénérer ce qui est déjà fait.",
+    "_doc": "run_id 'auto' = timestamped identifier. resume=true restarts an interrupted run without regenerating what is already done.",
     "run_id": "auto",
     "n_reports": 10,
     "seed": 42,
@@ -10,7 +10,7 @@
     "max_consecutive_errors": 5
   },
   "llm": {
-    "_doc": "backend: opencode | http_api | dry_run. 'command' est le template exact de la commande : {prompt} est remplace par le prompt, en un seul argument. Authentification a faire cote opencode (opencode auth login), jamais de cle ici : settings.json est archive dans out/<run_id>/settings.snapshot.json. Id du modele : opencode models.",
+    "_doc": "backend: opencode | http_api | dry_run. 'command' is the exact command template: {prompt} is replaced by the prompt, as a single argument. Authentication is handled by opencode (opencode auth login); never put a key here, settings.json is archived into out/<run_id>/settings.snapshot.json. Model id: opencode models.",
     "backend": "opencode",
     "command": [
       "opencode",
@@ -24,10 +24,10 @@
     "retries": 2,
     "retry_backoff_s": 8,
     "delay_between_calls_s": 1.5,
-    "extra_args_note": "Ajouter des flags (température, seed) directement dans 'command' si le CLI les supporte."
+    "extra_args_note": "Add flags (temperature, seed) directly to 'command' if your CLI supports them."
   },
   "generation": {
-    "_doc": "languages: en | fr | de | it. style: free | structured | random. Le label CAD-RADS n'est PAS réglable ici : il est calculé par src/classify.py à partir des lésions, puis imposé dans le prompt.",
+    "_doc": "languages: en | fr | de | it. style: free | structured | random. The CAD-RADS label is NOT configurable here: it is computed by src/classify.py from the lesions, then imposed in the prompt.",
     "languages": [
       "en"
     ],
@@ -56,7 +56,7 @@
     }
   },
   "other_structures": {
-    "_doc": "describe_normal : décrire les structures normales du champ de vue (poumons, plèvre, médiastin, aorte, péricarde) — change la FORME du rapport. include_incidental : ajouter des découvertes fortuites MINEURES à leur prévalence réelle (catalogue : reference/incidental_findings.json) — change le CONTENU. prevalence_scale multiplie toutes les prévalences (1.0 = valeurs du catalogue).",
+    "_doc": "describe_normal: describe the normal structures of the field of view (lungs, pleura, mediastinum, aorta, pericardium) — changes the SHAPE of the report. include_incidental: add MINOR incidental findings at their approximate prevalence (catalogue: reference/incidental_findings.json) — changes the CONTENT. prevalence_scale multiplies every prevalence (1.0 = catalogue values).",
     "describe_normal": false,
     "include_incidental": false,
     "prevalence_scale": 1.0,
@@ -64,7 +64,7 @@
     "exclude": []
   },
   "checks": {
-    "_doc": "Contrôles automatiques. label_integrity : le rapport contient-il le label calculé (= intégrité, pas exactitude). modifier_mention : stent/pontage/segment non diagnostique sont-ils décrits dans le corps. 'fail' = rapport exclu, 'warn' = conservé avec un drapeau.",
+    "_doc": "Automatic checks. label_integrity: does the report contain the computed label (integrity, not accuracy). modifier_mention: are the stent / graft / non-diagnostic segment described in the body. 'fail' = report excluded, 'warn' = kept with a flag.",
     "label_integrity": "fail",
     "language_match": "warn",
     "modifier_mention": "warn",
@@ -79,7 +79,7 @@
     ]
   },
   "export": {
-    "_doc": "Nom des fichiers .txt dans reports/. Placeholders : {case_id} {cadrads} {lang} {style}.",
+    "_doc": "Filename of the .txt files in reports/. Placeholders: {case_id} {cadrads} {lang} {style}.",
     "filename": "{case_id}_{cadrads}_{lang}",
     "write_csv_index": true
   }
