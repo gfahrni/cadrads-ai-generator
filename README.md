@@ -5,7 +5,7 @@ la recherche sur les LLM. Aucune donnée patient, aucune dépendance externe
 (Python 3.10+ standard library uniquement).
 
 > **Statut** : plomberie, plan, moteur de classification et contrôles testés
-> (63 tests, exécutés en CI). L'appel réel passe par le CLI `opencode` (voir
+> (65 tests, exécutés en CI). L'appel réel passe par le CLI `opencode` (voir
 > « Brancher ton compte opencode ») ; il n'a pas pu être validé dans
 > l'environnement de développement. Seul `backend: http_api` reste un placeholder.
 
@@ -67,20 +67,29 @@ python3 run.py                    # tout ce que dit settings.json
 **Attendu :** en fin d'exécution, les compteurs `label present`,
 `modif. decrits`, `decouvr. decrites`.
 
-### Les modes en un coup d'œil
+### Les options en un coup d'œil
 
-| Commande | Appel au modèle | Écrit |
-|---|---|---|
-| `run.py` | oui | rapports + manifeste |
-| `run.py --export-prompts` | oui | + `prompts/*.md` |
-| `run.py --dry-run` | non (client factice) | rapports factices |
-| `run.py --prompt-only` | **non** | `prompts/*.md` + index |
-| `run.py --plan-only` | non | rien (affichage) |
-| `run.py --show-prompt` | non | rien (affichage) |
+Sans aucune option, `run.py` exécute le pipeline complet : un appel au modèle par
+cas, rapports dans `reports/`, manifeste et résumés.
 
-Les quatre modes sans appel sont **exclusifs entre eux** (argparse refuse les
-combinaisons). `--export-prompts` est composable avec un run normal ou un
-`--dry-run`.
+| Option | Effet | Appel au modèle | Écrit |
+|---|---|---|---|
+| `--settings PATH` | utiliser un autre fichier de configuration | — | — |
+| `--limit N` | ne traiter que les N premiers cas | selon le mode | selon le mode |
+| `--export-prompts` | écrire aussi chaque prompt dans `prompts/` | oui | `prompts/*.md` + `index.tsv` |
+| `--dry-run` | client factice, sorties isolées en `*-dryrun` | non | rapports factices |
+| `--prompt-only` | écrire tous les prompts, sans générer | **non** | `prompts/*.md` + `index.tsv` |
+| `--plan-only` | afficher le plan et les labels calculés | non | rien |
+| `--show-prompt` | afficher le prompt du premier cas | non | rien |
+| `--no-resume` | ignorer le manifeste existant | — | — |
+| `--no-probe` | ne pas refaire le test de connexion au démarrage | — | — |
+| `--quiet` | sortie minimale | — | — |
+
+`--dry-run`, `--plan-only`, `--show-prompt` et `--prompt-only` sont **exclusifs
+entre eux** : argparse refuse les combinaisons et le dit explicitement.
+`--export-prompts` est composable avec un run normal ou un `--dry-run`.
+
+`python3 run.py --help` liste la même chose, avec les valeurs par défaut.
 
 `--prompt-only` est le moyen de relire les 2 000 prompts **avant** de dépenser
 2 000 appels :
@@ -125,7 +134,7 @@ cadrads-generator/            (racine du dépôt)
 │   ├── auth.py            connexion opencode + test d'appel
 │   ├── validate.py        nettoyage et contrôles automatiques
 │   └── store.py           manifeste, reprise, export
-└── tests/                 63 tests, stdlib uniquement
+└── tests/                 65 tests, stdlib uniquement
 ```
 
 Les fichiers de `src/` ne sont pas faits pour être modifiés à la main : tout le
@@ -465,7 +474,7 @@ python3 tests/test_classify.py     # 18 tests  — règles CAD-RADS
 python3 tests/test_incidental.py   # 16 tests  — prévalences, gating, plafond
 python3 tests/test_validate.py     # 16 tests  — nettoyage et contrôles
 python3 tests/test_auth.py         #  8 tests  — état de connexion, chemin d'échec
-python3 tests/test_cli.py          #  5 tests  — flags, exclusivité, export de prompts
+python3 tests/test_cli.py          #  7 tests  — flags, exclusivité, export, doc à jour
 ```
 
 Couvrent : seuils de sténose, occlusion, tronc commun, 3 vaisseaux, précédence
@@ -474,7 +483,7 @@ burden, format du label ; prévalences conformes au catalogue, respect de
 `age_min` / `sex`, plafond, exclusion, déterminisme ; nettoyage des préambules et
 blocs de code, tolérance du label, mention des modificateurs et des découvertes.
 
-63 tests, stdlib uniquement. Ils tournent aussi en intégration continue
+65 tests, stdlib uniquement. Ils tournent aussi en intégration continue
 (`.github/workflows/tests.yml`, Python 3.10 à 3.13) : c'est la preuve que le label
 imposé est conforme et que le tirage est reproductible.
 

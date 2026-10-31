@@ -27,7 +27,7 @@ from src import auth, incidental, llm_client, planner, prompt, store, validate  
 from src import config as cfgmod  # noqa: E402
 
 
-def _parse_args(argv=None):
+def _build_parser():
     parser = argparse.ArgumentParser(
         description="Genere des rapports CCTA synthetiques parametrables (CAD-RADS).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -54,7 +54,11 @@ def _parse_args(argv=None):
 
     parser.add_argument("--export-prompts", action="store_true",
                         help="pendant un run normal, ecrire aussi chaque prompt dans prompts/")
-    return parser.parse_args(argv)
+    return parser
+
+
+def _parse_args(argv=None):
+    return _build_parser().parse_args(argv)
 
 
 def _rel(path) -> str:

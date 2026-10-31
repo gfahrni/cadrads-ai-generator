@@ -57,6 +57,24 @@ class TestAnalyseDesArguments(unittest.TestCase):
                 self.assertIn("not allowed with", buffer.getvalue())
 
 
+class TestDocumentation(unittest.TestCase):
+    """Empeche la derive : une option ajoutee doit etre documentee dans le README."""
+
+    def test_toutes_les_options_sont_dans_le_readme(self):
+        import re
+
+        help_txt = run._build_parser().format_help()
+        flags = set(re.findall(r"(--[a-z][a-z-]+)", help_txt)) - {"--help"}
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        manquants = sorted(flag for flag in flags if flag not in readme)
+        self.assertEqual(manquants, [], f"options absentes du README : {manquants}")
+
+    def test_l_aide_liste_les_modes_exclusifs(self):
+        help_txt = run._build_parser().format_help()
+        self.assertIn("[--dry-run | --plan-only | --show-prompt | --prompt-only]", help_txt)
+
+
 class TestPromptOnly(unittest.TestCase):
     """Le mode prompt-only ne doit toucher ni au reseau ni a l'authentification."""
 
