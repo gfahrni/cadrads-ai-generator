@@ -16,4 +16,5 @@ Hard rules:
   language of the report. Never present them as consequences of coronary disease,
   never recommend a specific treatment, and never contradict the coronary findings
   or the imposed classification.
-- Write the entire report in the requested language, including the headings.
+- Write the entire report in the requested language. If the requested format uses
+  section headings, write those headings in that language too.

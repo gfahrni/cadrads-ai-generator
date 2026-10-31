@@ -5,10 +5,21 @@ Three responsibilities:
 2. Turn each case into a complete, consistent CLINICAL SCENARIO.
 3. Have the CAD-RADS label COMPUTED by src/classify.py from the lesions.
 
-Key point: the label is never left to the LLM's judgement. The target category is
-used to generate a plausible scenario, then the REAL category is recomputed from
-the lesions. If the two diverge, the computed value wins (source of truth) and the
-divergence is reported: this is a plan-drift metric, useful for the paper.
+Contradictions are avoided BY CONSTRUCTION, not filtered afterwards: each attribute
+is drawn inside the space left feasible by the previous ones. The dependency order
+is deliberate and must be preserved:
+
+    modifiers  -> constrain the plaque composition (V needs a soft plaque)
+    lesions    -> determine the extent, hence the plaque burden P
+    composition-> determines the calcium score (no calcified plaque, no calcium)
+    stent      -> placed on a segment that carries no significant stenosis
+    graft      -> placed in a territory that actually has disease
+
+The label is never left to the LLM's judgement: the target category guides the
+scenario, then the REAL category is recomputed from the lesions. A divergence is
+reported, never silently accepted.
+
+tests/test_plan_invariants.py asserts those rules over a full-sized plan.
 """
 from __future__ import annotations
 
@@ -21,15 +32,43 @@ CADRADS_ORDER = ["0", "1", "2", "3", "4A", "4B", "5"]
 
 PLAQUE_TYPES = ["calcified", "mixed", "non-calcified"]
 
-# Calcium consistent with the burden (Agatston order of magnitude).
-AGATSTON_BY_BURDEN = {
-    "P1": (1, 100),
-    "P2": (100, 300),
-    "P3": (300, 800),
-    "P4": (800, 2000),
+# Calcium contributed by ONE lesion, by composition. The Agatston score is the sum
+# over the lesions, so it is always explainable by what the prompt describes: a
+# purely non-calcified scenario gets no calcium at all.
+CALCIUM_BY_PLAQUE = {
+    "calcified": (80, 400),
+    "mixed": (30, 150),
+    "non-calcified": (0, 0),
 }
 
-GRAFTS = ["LIMA to LAD", "RIMA to RCA", "saphenous vein graft to LCX"]
+# Calcium also scales with the stenosis: a dense calcified plaque can exist without
+# much narrowing, but a score of 400 behind a 5 % stenosis reads as fabricated.
+CALCIUM_SEVERITY_FACTOR = ((25, 0.5), (50, 0.75), (200, 1.0))
+
+# Concrete non-atherosclerotic abnormalities for modifier E: the model must not have
+# to invent one.
+EXCEPTIONS = [
+    "anomalous origin of the right coronary artery from the left coronary sinus",
+    "myocardial bridge of the mid LAD",
+    "coronary artery fistula from the LAD to the pulmonary artery",
+    "fusiform aneurysm of the proximal RCA",
+]
+
+# A graft needs a bypassed territory that actually has disease.
+GRAFT_BY_VESSEL = {
+    "LM": "saphenous vein graft to the left main",
+    "LAD": "LIMA to LAD",
+    "LCX": "saphenous vein graft to LCX",
+    "RCA": "RIMA to RCA",
+}
+
+# Minimal acquisition context, so that the "Technique" section of a structured
+# report does not have to be invented by the model.
+TECHNIQUES = [
+    "retrospective ECG-gated acquisition, 120 kV, iodinated contrast",
+    "prospective ECG-triggered acquisition, 100 kV, iodinated contrast",
+    "retrospective ECG-gated acquisition with dose modulation, 110 kV, iodinated contrast",
+]
 
 
 def allocate(n: int, weights: dict) -> dict:
@@ -49,11 +88,14 @@ def _sample_segment(rng, reference, vessel):
 
 
 def _lesion(rng, reference, vessel, stenosis_pct):
+    # A chronic total occlusion is calcified or mixed in practice; a purely soft
+    # 100 % occlusion is atypical and reads as synthetic.
+    plaque = rng.choice(["calcified", "mixed"]) if stenosis_pct >= 100 else rng.choice(PLAQUE_TYPES)
     return {
         "vessel": vessel,
         "segment": _sample_segment(rng, reference, vessel),
         "stenosis_pct": stenosis_pct,
-        "plaque": rng.choice(PLAQUE_TYPES),
+        "plaque": plaque,
     }
 
 
@@ -93,6 +135,20 @@ def _lesions_for(rng, reference, cadrads):
     return lesions
 
 
+def _ensure_soft_plaque(rng, lesions, why: str, trace: list):
+    """Make at least one lesion non-calcified, when a rule requires it.
+
+    Used for modifier V: a vulnerable plaque is, by definition, a non-calcified
+    plaque with low attenuation. Drawing V on a calcified plaque would force the
+    model to invent a feature the scenario denies.
+    """
+    if not lesions or any(l["plaque"] == "non-calcified" for l in lesions):
+        return
+    victim = rng.choice(lesions)
+    victim["plaque"] = "non-calcified"
+    trace.append(f"{why}: one lesion switched to non-calcified plaque ({victim['vessel']})")
+
+
 def _pick_modifiers(rng, target, weights):
     """Draw the modifiers.
 
@@ -100,6 +156,8 @@ def _pick_modifiers(rng, target, weights):
     - N is excluded for targets 0/1/2: a non-diagnostic segment combined with a
       stenosis < 50 % reclassifies the case as CAD-RADS N (rule 1 of the engine),
       which would shift the requested distribution.
+    - G is excluded for targets 0/1/2: a bypass graft needs a stenosis >= 50 % to
+      justify it, which those categories cannot contain.
     """
     chosen = []
     for modifier, weight in weights.items():
@@ -108,6 +166,10 @@ def _pick_modifiers(rng, target, weights):
         if target == "0" and modifier != "E":
             continue
         if modifier == "N" and target in ("0", "1", "2"):
+            continue
+        if modifier == "G" and target in ("0", "1", "2", "3"):
+            continue
+        if modifier == "V" and target in ("0", "5"):
             continue
         if rng.random() < weight:
             chosen.append(modifier)
@@ -122,6 +184,46 @@ def _non_evaluable(rng, reference, lesions):
         return []
     vessel = rng.choice(candidates)
     return [f"{vessel} {_sample_segment(rng, reference, vessel)}"]
+
+
+def _free_segment(rng, reference, lesions, non_evaluable):
+    """A vessel/segment carrying neither a lesion nor a non-diagnostic artefact.
+
+    A stent placed here is genuinely patent, with no restenosis to explain: the
+    prompt can say "patent" without contradicting a stenosis in the same segment.
+    """
+    used = {(l["vessel"], l["segment"]) for l in lesions}
+    for entry in non_evaluable:
+        parts = entry.split()
+        if len(parts) == 2:
+            used.add((parts[0], parts[1]))
+    free = [(vessel, segment) for vessel, segments in reference["vessels"].items()
+            for segment in segments if (vessel, segment) not in used]
+    if not free:
+        return None
+    vessel, segment = rng.choice(free)
+    return f"{vessel} {segment}"
+
+
+def _calcium_age_factor(age: int) -> float:
+    """The same plaque calcifies less in a younger patient."""
+    return 0.5 + max(0, age - 45) * 0.022
+
+
+def _agatston(rng, lesions, age: int) -> int:
+    """Calcium explained by the described plaques: the sum over the lesions."""
+    total = 0
+    for lesion in lesions:
+        low, high = CALCIUM_BY_PLAQUE.get(lesion["plaque"], (0, 0))
+        if not high:
+            continue
+        factor = 1.0
+        for threshold, value in CALCIUM_SEVERITY_FACTOR:
+            if lesion["stenosis_pct"] < threshold:
+                factor = value
+                break
+        total += int(rng.randint(low, high) * factor)
+    return int(total * _calcium_age_factor(age))
 
 
 def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> list:
@@ -143,6 +245,8 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
     cases = []
 
     for index, target in enumerate(queue, start=1):
+        trace: list = []
+
         style = gen["style"]
         if style == "random":
             style = rng.choice(["free", "structured"])
@@ -153,16 +257,26 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
 
         age = rng.randint(age_lo, age_hi)
         language = rng.choice(gen["languages"])
+        technique = rng.choice(TECHNIQUES)
+        indication = gen["indication"]
+        if indication == "random":
+            indication = rng.choice(["stable", "acute"])
 
+        # 1. modifiers first: they constrain the plaque composition below
+        declared = _pick_modifiers(rng, target, gen["modifier_weights"])
+
+        # 2. lesions, then the composition constraint imposed by V
         lesions = _lesions_for(rng, reference, target)
-        modifiers = _pick_modifiers(rng, target, gen["modifier_weights"])
-        non_evaluable = _non_evaluable(rng, reference, lesions) if "N" in modifiers else []
+        if "V" in declared:
+            _ensure_soft_plaque(rng, lesions, "vulnerable plaque", trace)
 
-        # --- label computation (source of truth) --------------------------
+        # 3. non-diagnostic segment, on a vessel without severe disease
+        non_evaluable = _non_evaluable(rng, reference, lesions) if "N" in declared else []
+
+        # 4. category and plaque burden (P is a function of the extent)
         category, _ = rules.classify_category(lesions, non_evaluable)
-        choices = rules.plaque_burden_choices(category, lesions)
-        burden = rng.choice(choices) if choices else None
-        classified = rules.classify(lesions, modifiers, non_evaluable, burden)
+        burden = rules.plaque_burden_for(lesions)
+        classified = rules.classify(lesions, declared, non_evaluable, burden)
 
         if classified["category"] != target:
             classified["trace"].append(
@@ -170,20 +284,35 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
                 f"{classified['category']} — the computed value is kept"
             )
 
-        # --- calcium consistent with the burden ----------------------------
-        if classified["plaque_burden"]:
-            low, high = AGATSTON_BY_BURDEN.get(classified["plaque_burden"], (0, 100))
-            agatston = rng.randint(low, high)
-        else:
-            agatston = 0
+        # 5. calcium explained by the plaque composition
+        agatston = _agatston(rng, lesions, age)
 
+        # 5b. V must designate a plaque, E must name an abnormality: otherwise the
+        # model has to invent the finding the modifier refers to.
+        vulnerable_site = None
+        if "V" in classified["modifiers"]:
+            soft = [l for l in lesions if l["plaque"] == "non-calcified"]
+            if soft:
+                chosen = rng.choice(soft)
+                vulnerable_site = f"{chosen['vessel']} {chosen['segment']}"
+        exception_site = rng.choice(EXCEPTIONS) if "E" in classified["modifiers"] else None
+
+        # 6. stent on a free segment, so "patent" never contradicts a stenosis
         stent_site = None
-        if "S" in classified["modifiers"] and lesions:
-            site = rng.choice(lesions)
-            stent_site = f"{site['vessel']} {site['segment']}"
-        graft_site = rng.choice(GRAFTS) if "G" in classified["modifiers"] else None
+        if "S" in classified["modifiers"]:
+            stent_site = _free_segment(rng, reference, lesions, non_evaluable)
 
-        # --- minor incidental findings (optional) --------------------------
+        # 7. graft into a territory that has disease
+        graft_site = None
+        if "G" in classified["modifiers"]:
+            # A bypass graft is indicated for a >= 70 % stenosis (>= 50 % for the left
+            # main); a 51 % lesion is not surgical.
+            diseased = sorted({l["vessel"] for l in lesions
+                               if l["stenosis_pct"] >= (50 if l["vessel"] == "LM" else 70)})
+            if diseased:
+                graft_site = GRAFT_BY_VESSEL.get(rng.choice(diseased))
+
+        # 8. minor incidental findings (optional)
         incidental = []
         if catalogue is not None:
             for finding in incidental_lib.sample(rng, age, sex, cfg, catalogue):
@@ -205,18 +334,21 @@ def build_cases(cfg: dict, reference: dict, catalogue: dict | None = None) -> li
             "lesions": lesions,
             "plaque_burden": classified["plaque_burden"],
             "modifiers": classified["modifiers"],
-            "declared_modifiers": modifiers,
+            "declared_modifiers": declared,
             "stent_site": stent_site,
             "graft_site": graft_site,
             "non_evaluable": non_evaluable,
             "agatston": agatston,
-            "classification_trace": classified["trace"],
+            "technique": technique,
+            "vulnerable_site": vulnerable_site,
+            "exception_site": exception_site,
+            "classification_trace": classified["trace"] + trace,
             "incidental": incidental,
             "language": language,
             "style": style,
             "age": age,
             "sex": sex,
-            "indication": gen["indication"],
+            "indication": indication,
         })
 
     return cases

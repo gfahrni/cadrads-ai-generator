@@ -23,26 +23,22 @@ from __future__ import annotations
 THREE_VESSELS = ("LAD", "LCX", "RCA")
 MODIFIER_ORDER = ("N", "S", "G", "E", "V")
 
-# Plaque burden allowed by category (clinical consistency).
-BURDEN_BY_CATEGORY = {
-    "0": [],
-    "N": [],
-    "1": ["P1", "P2"],
-    "2": ["P1", "P2", "P3"],
-    "3": ["P2", "P3"],
-    "4A": ["P2", "P3", "P4"],
-    "4B": ["P3", "P4"],
-    "5": ["P3", "P4"],
-}
+# Plaque burden is a measure of EXTENT, not of category severity: the consensus
+# does not tie P to the CAD-RADS category, and a single occlusion is a small total
+# plaque burden. Deriving P from the number of diseased vessels removes the
+# overreach ("P3 severe burden" resting on one 32% plaque) and makes the value a
+# pure function of the lesions.
+BURDEN_BY_EXTENT = {0: None, 1: "P1", 2: "P2", 3: "P3"}
 
-# Plaque burden allowed by number of diseased vessels:
-# P is a measure of extent, not only of severity.
-BURDEN_BY_EXTENT = {
-    0: [],
-    1: ["P1", "P2"],
-    2: ["P2", "P3"],
-    3: ["P3", "P4"],
-}
+
+def plaque_burden_for(lesions) -> str | None:
+    """P value implied by the extent of the disease (number of diseased vessels).
+
+    P4 (extensive) needs four or more diseased vessels; the scenario models at most
+    three, so P4 does not occur. That is documented rather than faked.
+    """
+    n_vessels = len({l["vessel"] for l in lesions if int(l["stenosis_pct"]) > 0})
+    return BURDEN_BY_EXTENT.get(min(n_vessels, 3), None)
 
 
 def _max_per_vessel(lesions) -> dict:
@@ -95,17 +91,12 @@ def classify_category(lesions, non_evaluable=()) -> tuple[str, list]:
 
 
 def plaque_burden_choices(category: str, lesions) -> list:
-    """Possible P values: consistent with the category AND with the observed extent.
+    """Single-element list with the P value implied by the extent.
 
-    The consensus defines P semi-quantitatively (SIS, number of segments); there is
-    no closed formula. P is therefore constrained rather than computed, and the
-    consistency is then checked.
+    Kept as a list so the caller code stays unchanged; there is no choice left.
     """
-    by_category = set(BURDEN_BY_CATEGORY.get(category, []))
-    n_vessels = len({l["vessel"] for l in lesions if int(l["stenosis_pct"]) > 0})
-    by_extent = set(BURDEN_BY_EXTENT.get(min(n_vessels, 3), []))
-    both = sorted(by_category & by_extent)
-    return both or sorted(by_category)
+    value = plaque_burden_for(lesions)
+    return [value] if value else []
 
 
 def filter_modifiers(modifiers, category: str, non_evaluable=()) -> list:

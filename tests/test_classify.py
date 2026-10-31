@@ -59,7 +59,7 @@ class TestCategory(unittest.TestCase):
         result = classify([lesion("LAD", 60)], modifiers=["N"], non_evaluable=["RCA mid"])
         self.assertEqual(result["category"], "3")
         self.assertIn("N", result["modifiers"])
-        self.assertEqual(result["label"], "CAD-RADS 3/P2/N")
+        self.assertEqual(result["label"], "CAD-RADS 3/P1/N")
 
 
 class TestLabel(unittest.TestCase):
@@ -94,8 +94,16 @@ class TestBurden(unittest.TestCase):
         self.assertEqual(result["plaque_burden"], "P4")
         self.assertTrue(any("WARNING" in line for line in result["trace"]))
 
-    def test_default_burden(self):
-        self.assertIn(classify([lesion("LAD", 80)])["plaque_burden"], ("P2", "P3"))
+    def test_burden_follows_extent(self):
+        # P measures extent: one vessel -> P1, two -> P2, three -> P3
+        self.assertEqual(classify([lesion("LAD", 80)])["plaque_burden"], "P1")
+        self.assertEqual(classify([lesion("LAD", 80), lesion("LCX", 60)])["plaque_burden"], "P2")
+        trois = [lesion("LAD", 80), lesion("LCX", 60), lesion("RCA", 90)]
+        self.assertEqual(classify(trois)["plaque_burden"], "P3")
+
+    def test_burden_is_not_tied_to_the_category(self):
+        # a single occlusion is a small total burden: the category must not force P3
+        self.assertEqual(classify([lesion("RCA", 100)])["plaque_burden"], "P1")
 
     def test_no_burden_when_category_is_n(self):
         result = classify([], non_evaluable=["RCA mid"])

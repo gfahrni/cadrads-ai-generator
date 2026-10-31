@@ -2,6 +2,7 @@ Write ONE coronary CT angiography (CCTA) report based on this scenario.
 
 ## Clinical scenario
 {{scenario_block}}
+Acquisition: {{technique}}
 
 ## Patient and request
 - Age: {{age}} years
@@ -25,7 +26,7 @@ Rules for the conclusion:
 - Legend: {{burden_legend}}
 
 ## Required content
-- Describe the findings vessel by vessel, using the stenosis severity and
-  plaque composition given above.
-- Do not mention any lesion, vessel or severity that is not in the scenario.
+- {{findings_instruction}}
+- Do not invent lesions, stenoses or findings that are not listed above.
+  You may state that a vessel or a structure is unremarkable.
 {{extra_rules}}

@@ -5,7 +5,7 @@ research on large language models. No patient data, no external dependency
 (Python 3.10+ standard library only).
 
 > **Status**: plumbing, plan, classification engine and checks are tested
-> (80 tests, run in CI). The real call goes through the `opencode` CLI (see
+> (107 tests, run in CI). The real call goes through the `opencode` CLI (see
 > "Connecting opencode"); it could not be validated in the development
 > environment. Only `backend: http_api` remains a placeholder.
 
@@ -135,7 +135,7 @@ cadrads-generator/            (repository root)
 │   ├── auth.py            opencode connection + call probe
 │   ├── validate.py        cleaning and automatic checks
 │   └── store.py           manifest, resume, export
-└── tests/                 80 tests, stdlib only
+└── tests/                 107 tests, stdlib only
 ```
 
 The files in `src/` are not meant to be edited by hand: all tuning happens through
@@ -163,7 +163,7 @@ the program with a message listing the allowed values.
 | `generation` | `style` | `"random"` | `free`, `structured`, `random` |
 | `generation` | `cadrads_weights` | see file | target distribution of the categories |
 | `generation` | `modifier_weights` | see file | frequency of S, G, E, V, N |
-| `generation` | `age_range` / `sex` / `indication` | `[45,88]` / `random` / `stable` | simulated population |
+| `generation` | `age_range` / `sex` / `indication` | `[45,88]` / `random` / `stable` | simulated population; `indication: "random"` draws stable/acute per case |
 | `other_structures` | `describe_normal` | `false` | describe the organs of the field of view |
 | `other_structures` | `include_incidental` | `false` | add minor incidental findings |
 | `other_structures` | `prevalence_scale` / `max_per_case` | `1.0` / `3` | dosing and cap of the findings |
@@ -475,17 +475,29 @@ The rates are aggregated in `summary.json`.
 These checks are **lexical**. A report can pass all of them and remain clinically
 incoherent: that is precisely the role of the expert readers.
 
+### The plan itself is checked by invariants
+
+The scenario generator avoids contradictions **by construction**, not by filtering
+afterwards: each attribute is drawn inside the space left feasible by the previous
+ones (modifiers constrain the plaque composition, composition determines the calcium
+score, the stent goes on a segment with no significant stenosis, the graft into a
+diseased territory). `tests/test_plan_invariants.py` then asserts those rules over a
+full 2,000-case plan — "no stent on a stenosed segment", "no calcium without
+calcified plaque", "no vulnerable plaque on a calcified lesion" — so a future change
+to the generation order that reintroduces a contradiction fails the build.
+
 ---
 
 ## Tests
 
 ```bash
-python3 tests/test_classify.py     # 18 tests  — CAD-RADS rules
+python3 tests/test_classify.py     # 19 tests  — CAD-RADS rules
 python3 tests/test_incidental.py   # 16 tests  — prevalences, gating, cap
 python3 tests/test_validate.py     # 16 tests  — cleaning and checks
 python3 tests/test_auth.py         # 10 tests  — connection state, failure path, fast-fail
 python3 tests/test_cli.py          # 14 tests  — flags, exclusivity, export, picker, reload
 python3 tests/test_config.py       #  6 tests  — rewriting the model in settings.json
+python3 tests/test_plan_invariants.py  # 26 tests  — "X impossible when Y" over 2000 cases
 ```
 
 They cover: stenosis thresholds, occlusion, left main, three vessels, `5 > 4B`
@@ -494,7 +506,7 @@ label format; prevalences matching the catalogue, `age_min` / `sex` gating, cap,
 exclusion, determinism; preamble and code-block cleaning, label tolerance, mentions
 of modifiers and findings; connection state and its failure path.
 
-80 tests, standard library only. They also run in continuous integration
+107 tests, standard library only. They also run in continuous integration
 (`.github/workflows/tests.yml`, Python 3.10 to 3.14): that is the proof that the
 imposed label follows the rules and that the draw is reproducible.
 
@@ -523,9 +535,11 @@ imposed label follows the rules and that the draw is reproducible.
 - **`5 > 4B` precedence**: when an occlusion and a left main lesion coexist, the
   higher category is kept. That is a convention; change it on one line in
   `classify_category` if you prefer the opposite.
-- **Semi-quantitative plaque burden**: the consensus provides no closed formula;
-  here `P` is constrained by the category and by the number of diseased vessels, not
-  computed by an equation.
+- **Plaque burden is derived from extent only**: 1 diseased vessel → P1, 2 → P2,
+  3 → P3. The consensus does not tie `P` to the CAD-RADS category, and tying it
+  produced overreach ("severe burden" on a single 32 % plaque). Consequence: **P4
+  never occurs**, because the scenario models at most three diseased vessels. That is
+  documented rather than faked.
 - **Simplified anatomy**: no dominance, no collaterals, no segmental calcium score,
   no CT-FFR.
 - **Minor incidental findings only**: no mass, lymphadenopathy, pulmonary embolism or

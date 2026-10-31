@@ -45,6 +45,21 @@ def load_templates(prompts_dir: Path) -> dict:
     return templates
 
 
+FINDINGS_WITH_LESIONS = (
+    "Describe the findings vessel by vessel, using the stenosis severity and "
+    "plaque composition given above."
+)
+FINDINGS_WITHOUT_LESIONS = (
+    "State explicitly that there is no coronary plaque and no luminal stenosis, "
+    "and do not describe any stenosis."
+)
+
+
+def _findings_instruction(case: dict) -> str:
+    """The 'vessel by vessel' bullet only makes sense when lesions are listed."""
+    return FINDINGS_WITH_LESIONS if case["lesions"] else FINDINGS_WITHOUT_LESIONS
+
+
 def _scenario_block(case: dict, reference: dict) -> str:
     if case["lesions"]:
         lines = ["Findings:"]
@@ -62,8 +77,13 @@ def _scenario_block(case: dict, reference: dict) -> str:
         lines.append(f"Stent: previously implanted stent in the {case['stent_site']}, patent")
     if case["graft_site"]:
         lines.append(f"Bypass graft: {case['graft_site']}, patent")
-    if "E" in case["modifiers"]:
-        lines.append("Exception: non-atherosclerotic coronary abnormality present (e.g. anomalous origin)")
+    if case.get("exception_site"):
+        lines.append(f"Non-atherosclerotic abnormality (modifier E): {case['exception_site']}")
+    if case.get("vulnerable_site"):
+        lines.append(
+            f"High-risk plaque (modifier V): non-calcified plaque with low attenuation "
+            f"and positive remodelling in the {case['vulnerable_site']}"
+        )
     if case["non_evaluable"]:
         lines.append("Non-diagnostic segments (non-evaluable, motion artefact): "
                      + "; ".join(case["non_evaluable"]))
@@ -107,12 +127,15 @@ def _extra_rules(case: dict) -> str:
         rules.append(f"- Describe the stent in the {case['stent_site']} in the findings.")
     if case["graft_site"]:
         rules.append(f"- Describe the bypass graft ({case['graft_site']}) in the findings.")
-    if "E" in case["modifiers"]:
-        rules.append("- Describe the non-atherosclerotic abnormality (modifier E).")
+    if case.get("exception_site"):
+        rules.append(f"- Describe the non-atherosclerotic abnormality: {case['exception_site']}.")
+    if case.get("vulnerable_site"):
+        rules.append(
+            f"- Describe the high-risk plaque in the {case['vulnerable_site']} "
+            f"(low attenuation, positive remodelling)."
+        )
     if case["non_evaluable"]:
         rules.append("- State that the listed segment is non-diagnostic (modifier N).")
-    if not case["lesions"]:
-        rules.append("- State explicitly that there is no plaque and no stenosis.")
     return "\n".join(rules)
 
 
@@ -121,6 +144,8 @@ def render(templates: dict, case: dict, cfg: dict, reference: dict) -> dict:
         "scenario_block": _scenario_block(case, reference),
         "other_structures_block": _other_structures_block(case, cfg),
         "label": case["label"],
+        "technique": case.get("technique", "ECG-gated acquisition, iodinated contrast"),
+        "findings_instruction": _findings_instruction(case),
         "burden_legend": BURDEN_LEGEND,
         "age": str(case["age"]),
         "sex": case["sex"],
