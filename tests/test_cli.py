@@ -71,8 +71,10 @@ class TestDocumentation(unittest.TestCase):
         self.assertEqual(manquants, [], f"options absentes du README : {manquants}")
 
     def test_l_aide_liste_les_modes_exclusifs(self):
-        help_txt = run._build_parser().format_help()
-        self.assertIn("[--dry-run | --plan-only | --show-prompt | --prompt-only]", help_txt)
+        # La ligne d'usage est repliee selon la version de Python et la largeur
+        # du terminal : on compare apres normalisation des espaces.
+        aide = " ".join(run._build_parser().format_help().split())
+        self.assertIn("--dry-run | --plan-only | --show-prompt | --prompt-only", aide)
 
 
 class TestPromptOnly(unittest.TestCase):
