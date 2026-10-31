@@ -1,0 +1,86 @@
+{
+  "_doc": "SEUL FICHIER À MODIFIER. Lancement : python3 run.py   (ou : python3 run.py --dry-run )",
+  "run": {
+    "_doc": "run_id 'auto' = identifiant horodaté. resume=true reprend un run interrompu sans régénérer ce qui est déjà fait.",
+    "run_id": "auto",
+    "n_reports": 10,
+    "seed": 42,
+    "output_dir": "out",
+    "resume": true,
+    "max_consecutive_errors": 5
+  },
+  "llm": {
+    "_doc": "backend: opencode | http_api | dry_run. 'command' est le template exact de la commande : {prompt} est remplace par le prompt, en un seul argument. Authentification a faire cote opencode (opencode auth login), jamais de cle ici : settings.json est archive dans out/<run_id>/settings.snapshot.json. Id du modele : opencode models.",
+    "backend": "opencode",
+    "command": [
+      "opencode",
+      "run",
+      "--model",
+      "opencode/grok-code",
+      "{prompt}"
+    ],
+    "model_label": "opencode/grok-code",
+    "timeout_s": 240,
+    "retries": 2,
+    "retry_backoff_s": 8,
+    "delay_between_calls_s": 1.5,
+    "extra_args_note": "Ajouter des flags (température, seed) directement dans 'command' si le CLI les supporte."
+  },
+  "generation": {
+    "_doc": "languages: en | fr | de | it. style: free | structured | random. Le label CAD-RADS n'est PAS réglable ici : il est calculé par src/classify.py à partir des lésions, puis imposé dans le prompt.",
+    "languages": [
+      "en"
+    ],
+    "style": "random",
+    "age_range": [
+      45,
+      88
+    ],
+    "sex": "random",
+    "indication": "stable",
+    "cadrads_weights": {
+      "0": 0.05,
+      "1": 0.25,
+      "2": 0.25,
+      "3": 0.15,
+      "4A": 0.15,
+      "4B": 0.08,
+      "5": 0.07
+    },
+    "modifier_weights": {
+      "S": 0.15,
+      "G": 0.08,
+      "E": 0.05,
+      "V": 0.1,
+      "N": 0.08
+    }
+  },
+  "other_structures": {
+    "_doc": "describe_normal : décrire les structures normales du champ de vue (poumons, plèvre, médiastin, aorte, péricarde) — change la FORME du rapport. include_incidental : ajouter des découvertes fortuites MINEURES à leur prévalence réelle (catalogue : reference/incidental_findings.json) — change le CONTENU. prevalence_scale multiplie toutes les prévalences (1.0 = valeurs du catalogue).",
+    "describe_normal": false,
+    "include_incidental": false,
+    "prevalence_scale": 1.0,
+    "max_per_case": 3,
+    "exclude": []
+  },
+  "checks": {
+    "_doc": "Contrôles automatiques. label_integrity : le rapport contient-il le label calculé (= intégrité, pas exactitude). modifier_mention : stent/pontage/segment non diagnostique sont-ils décrits dans le corps. 'fail' = rapport exclu, 'warn' = conservé avec un drapeau.",
+    "label_integrity": "fail",
+    "language_match": "warn",
+    "modifier_mention": "warn",
+    "incidental_mention": "warn",
+    "min_words": 35,
+    "max_words": 800,
+    "forbidden_phrases": [
+      "as an ai",
+      "i cannot",
+      "language model",
+      "```"
+    ]
+  },
+  "export": {
+    "_doc": "Nom des fichiers .txt dans reports/. Placeholders : {case_id} {cadrads} {lang} {style}.",
+    "filename": "{case_id}_{cadrads}_{lang}",
+    "write_csv_index": true
+  }
+}

@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use this software or the generated dataset, please cite it as below."
+type: software
+title: "CAD-RADS report generator: parameterizable synthetic CCTA reports for LLM research"
+abstract: >-
+  Open-source Python tool that generates parameterizable synthetic coronary CT
+  angiography (CCTA) reports with CAD-RADS 2.0 labels. The CAD-RADS category is
+  computed deterministically from the lesion scenario by a rule engine, then
+  imposed on the language model, so that the released corpus is internally
+  consistent by construction. Optional realistic minor incidental findings.
+authors:
+  - family-names: "Fahrni"
+    given-names: "Guillaume"
+date-released: "2026-10-31"
+license: MIT
+repository-code: "https://github.com/guillaumefahrni/cadrads-generator"
+keywords:
+  - CAD-RADS
+  - coronary CT angiography
+  - synthetic data
+  - large language models
+  - radiology reporting
+  - reproducibility

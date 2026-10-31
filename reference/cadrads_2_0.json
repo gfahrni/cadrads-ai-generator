@@ -1,0 +1,43 @@
+{
+  "_source": "CAD-RADS 2.0 — Cury RC et al. Radiol Cardiothorac Imaging 2022;4(5):e220183. doi:10.1148/ryct.220183",
+  "_verify": "VÉRIFIER ce fichier contre le document de consensus avant de générer le dataset final. Les catégories et les seuils de sténose sont stables ; la liste des modificateurs (surtout V vs P) doit être relue sur la Table 3 du consensus. Toute erreur ici se propage dans la totalité du dataset.",
+
+  "categories": {
+    "0":  { "stenosis_pct": [0, 0],     "label": "CAD-RADS 0",  "meaning": "Absence de plaque et de sténose" },
+    "1":  { "stenosis_pct": [1, 24],    "label": "CAD-RADS 1",  "meaning": "Sténose minimale" },
+    "2":  { "stenosis_pct": [25, 49],   "label": "CAD-RADS 2",  "meaning": "Sténose légère" },
+    "3":  { "stenosis_pct": [50, 69],   "label": "CAD-RADS 3",  "meaning": "Sténose modérée" },
+    "4A": { "stenosis_pct": [70, 99],   "label": "CAD-RADS 4A", "meaning": "Sténose sévère, 1 ou 2 vaisseaux" },
+    "4B": { "stenosis_pct": [50, 99],   "label": "CAD-RADS 4B", "meaning": "Sténose du tronc commun >= 50% ou atteinte obstructive 3 vaisseaux" },
+    "5":  { "stenosis_pct": [100, 100], "label": "CAD-RADS 5",  "meaning": "Occlusion totale d'au moins une artère coronaire" }
+  },
+
+  "plaque_burden": {
+    "P1": "Plaque focale, faible quantité",
+    "P2": "Quantité modérée de plaque",
+    "P3": "Quantité sévère de plaque",
+    "P4": "Quantité extensive de plaque"
+  },
+
+  "ischemia": {
+    "none": "Non évaluée",
+    "I+":   "Ischémie positive (CT-FFR ou CTP)",
+    "I-":   "Ischémie négative",
+    "I+/-": "Ischémie borderline"
+  },
+
+  "modifiers": {
+    "N": "Segment non diagnostique / non évaluable",
+    "S": "Stent coronaire",
+    "G": "Pontage (graft)",
+    "E": "Exception : anomalie coronaire non athéroscléreuse",
+    "V": "Plaque vulnérable / haut risque (à relire dans le consensus 2.0)"
+  },
+
+  "vessels": {
+    "LM":  ["ostial", "shaft", "distal"],
+    "LAD": ["proximal", "mid", "distal"],
+    "LCX": ["proximal", "mid", "distal"],
+    "RCA": ["proximal", "mid", "distal"]
+  }
+}

@@ -1,0 +1,214 @@
+"""Nettoyage de la reponse et controles automatiques.
+
+Deux familles de controles, a ne pas confondre :
+
+- `label` : le rapport contient-il le label CAD-RADS calcule par
+  src/classify.py ? C'est un controle d'INTEGRITE (le modele retranscrit-il
+  correctement ?), pas une mesure d'exactitude clinique : le label est impose.
+- `modifiers` : les modificateurs annonces (stent, pontage, segment non
+  diagnostique) sont-ils decrits dans le corps du rapport ? Controle semantique
+  leger, qui detecte les labels colles sans contenu correspondant.
+
+Plus les controles de forme : langue, longueur, phrases interdites.
+"""
+from __future__ import annotations
+
+import re
+
+# --- nettoyage -------------------------------------------------------------
+
+_FENCE = re.compile(r"```[a-zA-Z0-9_-]*\s*")
+_PREAMBLE = re.compile(
+    r"^\s*(here (is|are)\b[^\n]*:|below is\b[^\n]*:|voici\b[^\n]*:|ci-dessous\b[^\n]*:|"
+    r"sure[,!]?\s*$|certainly[,!]?\s*$)\s*",
+    re.IGNORECASE,
+)
+_CAD_RADS_LINE = re.compile(r"CAD[-\s]?RADS\s*[™®]?\s*[:=]?\s*([0-5])\s*([A-B])?", re.IGNORECASE)
+
+
+def clean(raw: str) -> str:
+    """Retire le bruit habituel des LLM (blocs de code, preambule, guillemets)."""
+    text = _FENCE.sub("", raw or "")
+    text = text.strip()
+
+    for _ in range(3):
+        new = _PREAMBLE.sub("", text, count=1)
+        if new == text:
+            break
+        text = new.lstrip()
+
+    if len(text) > 2 and text[0] == text[-1] and text[0] in "\"'«»":
+        text = text[1:-1]
+
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+# --- detection de langue (heuristique legere) ------------------------------
+
+_STOPWORDS = {
+    "en": ("the", "and", "with", "of", "is", "there", "no", "coronary"),
+    "fr": ("le", "la", "les", "des", "et", "avec", "est", "pas", "coronaire"),
+    "de": ("der", "die", "und", "mit", "ist", "nicht", "keine", "koronar"),
+    "it": ("il", "la", "gli", "e", "con", "non", "coronaria", "nessuna"),
+}
+
+
+def detect_language(text: str) -> str | None:
+    lowered = " " + text.lower() + " "
+    scores = {
+        lang: sum(len(re.findall(rf"\b{re.escape(w)}\b", lowered)) for w in words)
+        for lang, words in _STOPWORDS.items()
+    }
+    best = max(scores, key=scores.get)
+    return best if scores[best] >= 2 else None
+
+
+# --- label impose ----------------------------------------------------------
+
+def extract_cadrads(text: str) -> str | None:
+    """Derniere mention CAD-RADS du texte -> categorie ('4A', '0'...). Pour le debug."""
+    matches = list(_CAD_RADS_LINE.finditer(text))
+    if not matches:
+        return None
+    digits, letter = matches[-1].group(1), matches[-1].group(2)
+    return f"{digits}{(letter or '').upper()}"
+
+
+def _label_pattern(label: str) -> re.Pattern:
+    """Regex tolerante : 'CAD-RADS 4A/P2/S' accepte les espaces et variantes de tiret."""
+    parts = []
+    for token in re.split(r"(/|\s+)", label):
+        if not token:
+            continue
+        if token == "/":
+            parts.append(r"\s*/\s*")
+        elif token.strip() == "":
+            parts.append(r"\s+")
+        else:
+            parts.append(re.escape(token).replace(r"\-", "[- ]?"))
+    return re.compile("".join(parts), re.IGNORECASE)
+
+
+def label_present(text: str, label: str) -> bool:
+    return _label_pattern(label).search(text) is not None
+
+
+def _body_only(text: str) -> str:
+    """Texte prive de la ligne de classification finale."""
+    matches = list(_CAD_RADS_LINE.finditer(text))
+    return text[: matches[-1].start()] if matches else text
+
+
+# --- modificateurs reellement decrits --------------------------------------
+
+_MODIFIER_KEYWORDS = {
+    "S": ("stent",),
+    "G": ("graft", "bypass", "pontage", "bypassgraft"),
+    "E": ("anomal", "exception", "fistul", "aberrant", "origine anormale"),
+    "N": ("non-diagnostic", "non diagnostic", "non-diagnostique", "non diagnostique",
+          "non-evaluable", "non evaluable", "non eval", "artefact", "artifact",
+          "nicht beurteilbar", "non valutabile"),
+    "V": ("vulnerab", "vulnéra", "high-risk plaque", "high risk plaque", "remodel"),
+}
+
+
+def _mentions(text: str, modifiers) -> dict:
+    body = _body_only(text).lower()
+    return {m: any(k in body for k in _MODIFIER_KEYWORDS.get(m, (m.lower(),))) for m in modifiers}
+
+
+def _incidental_mention(body: str, findings) -> dict:
+    """Chaque decouverte fortuite est-elle evoquee dans le corps ?
+
+    None = non verifiable : le catalogue ne fournit pas de mots-cles pour la
+    langue du rapport (autre que en/fr/de/it).
+    """
+    mentioned = {}
+    for finding in findings:
+        keywords = finding.get("keywords") or []
+        mentioned[finding["id"]] = any(k in body for k in keywords) if keywords else None
+    return mentioned
+
+
+# --- controle principal ----------------------------------------------------
+
+def check(text: str, case: dict, cfg: dict) -> dict:
+    checks_cfg = cfg["checks"]
+    words = len(text.split())
+
+    def status(key, ok):
+        """Traduit un booleen + la politique de checks.* en statut symbolique."""
+        mode = checks_cfg[key]
+        if mode == "off" or ok:
+            return "ok" if ok else "off"
+        return mode  # "fail" ou "warn"
+
+    expected_label = case["label"]
+    label_ok = label_present(text, expected_label)
+
+    detected_lang = detect_language(text)
+    if detected_lang is None:
+        # Langue non determinable (texte tres court) : ni succes ni echec.
+        language_ok = False
+        language_status = "warn"
+    else:
+        language_ok = detected_lang == case["language"]
+        language_status = status("language_match", language_ok)
+
+    modifiers = case["modifiers"]
+    mentioned = _mentions(text, modifiers) if modifiers else {}
+    modifiers_ok = all(mentioned.values()) if mentioned else True
+
+    findings = case.get("incidental") or []
+    if not findings:
+        incidental_mention = {}
+        incidental_ok = True
+        incidental_status = "off"
+        incidental_skipped = True  # rien a verifier : hors denominateur
+    else:
+        incidental_mention = _incidental_mention(_body_only(text).lower(), findings)
+        verifiable = {k: v for k, v in incidental_mention.items() if v is not None}
+        incidental_skipped = not verifiable
+        incidental_ok = all(verifiable.values()) if verifiable else True
+        incidental_status = "off" if incidental_skipped else status("incidental_mention", incidental_ok)
+
+    lowered = text.lower()
+    hits = [p for p in checks_cfg["forbidden_phrases"] if p.lower() in lowered]
+
+    length_ok = checks_cfg["min_words"] <= words <= checks_cfg["max_words"]
+
+    results = {
+        "label": {
+            "expected": expected_label,
+            "ok": label_ok,
+            "category_found": extract_cadrads(text),
+            "status": status("label_integrity", label_ok),
+        },
+        "language": {
+            "value": detected_lang,
+            "expected": case["language"],
+            "ok": language_ok,
+            "status": language_status,
+            "undetermined": detected_lang is None,
+        },
+        "modifiers": {
+            "expected": modifiers,
+            "mentioned": mentioned,
+            "ok": modifiers_ok,
+            "status": status("modifier_mention", modifiers_ok),
+        },
+        "incidental": {
+            "expected": [f["id"] for f in findings],
+            "mentioned": incidental_mention,
+            "ok": incidental_ok,
+            "status": incidental_status,
+            "skipped": incidental_skipped,
+        },
+        "length": {"words": words, "ok": length_ok, "status": "ok" if length_ok else "warn"},
+        "forbidden": {"hits": hits, "ok": not hits, "status": "ok" if not hits else "warn"},
+    }
+
+    statuses = [v["status"] for v in results.values()]
+    return {"ok": "fail" not in statuses, "results": results}

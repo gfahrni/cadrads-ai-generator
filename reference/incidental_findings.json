@@ -1,0 +1,291 @@
+{
+  "_source_note": "Prévalences choisies comme ORDRES DE GRANDEUR plausibles pour une population adressée en CCTA (adulte, 45-88 ans). Ce sont des PARAMÈTRES DE CONCEPTION, pas une donnée épidémiologique mesurée : le manuscrit ne doit pas présenter ces valeurs comme des prévalences établies. Elles sont publiées avec le code, versionnées dans chaque run (settings.snapshot.json), et modifiables sans toucher au code.",
+  "_verify": "À relire une fois avant le dataset final, pour vérifier que chaque ordre de grandeur reste défendable cliniquement (pas d'exigence de citation). Le paramètre other_structures.prevalence_scale permet en plus une analyse de sensibilité (ex. 0.5x / 2x) sans rien recoder.",
+  "organs": {
+    "aorta": {
+      "en": [
+        "aort"
+      ],
+      "fr": [
+        "aort"
+      ],
+      "de": [
+        "aorta",
+        "aorten"
+      ],
+      "it": [
+        "aort"
+      ]
+    },
+    "pericardium": {
+      "en": [
+        "pericard"
+      ],
+      "fr": [
+        "péricard",
+        "pericard"
+      ],
+      "de": [
+        "perikard"
+      ],
+      "it": [
+        "pericard"
+      ]
+    },
+    "heart": {
+      "en": [
+        "valve",
+        "mitral",
+        "ventricul"
+      ],
+      "fr": [
+        "valve",
+        "mitral",
+        "ventricul"
+      ],
+      "de": [
+        "klappe",
+        "ventrikel"
+      ],
+      "it": [
+        "valvola",
+        "ventricol"
+      ]
+    },
+    "lungs": {
+      "en": [
+        "lung",
+        "pulmon",
+        "emphysem",
+        "atelecta"
+      ],
+      "fr": [
+        "poumon",
+        "pulmon",
+        "emphys",
+        "atélecta",
+        "atelecta"
+      ],
+      "de": [
+        "lunge",
+        "pulmon",
+        "emphysem"
+      ],
+      "it": [
+        "polmon",
+        "pulmon",
+        "enfisem"
+      ]
+    },
+    "pleura": {
+      "en": [
+        "pleur"
+      ],
+      "fr": [
+        "plèvr",
+        "plevr"
+      ],
+      "de": [
+        "pleur"
+      ],
+      "it": [
+        "pleur"
+      ]
+    },
+    "mediastinum": {
+      "en": [
+        "mediastin"
+      ],
+      "fr": [
+        "médiastin",
+        "mediastin"
+      ],
+      "de": [
+        "mediastin"
+      ],
+      "it": [
+        "mediastin"
+      ]
+    },
+    "spine": {
+      "en": [
+        "vertebra",
+        "spine",
+        "spinal"
+      ],
+      "fr": [
+        "vertébr",
+        "vertebr",
+        "rachis"
+      ],
+      "de": [
+        "wirbel"
+      ],
+      "it": [
+        "vertebr",
+        "rachid"
+      ]
+    },
+    "upper_abdomen": {
+      "en": [
+        "liver",
+        "hepat",
+        "gallbladder",
+        "gallstone",
+        "stomach",
+        "hiatal"
+      ],
+      "fr": [
+        "foie",
+        "hépat",
+        "hepat",
+        "vésicule",
+        "vesicule",
+        "estomac",
+        "hiatal"
+      ],
+      "de": [
+        "leber",
+        "gallenblase",
+        "magen",
+        "hiatus"
+      ],
+      "it": [
+        "fegato",
+        "colecisti",
+        "stomaco",
+        "iatale"
+      ]
+    },
+    "esophagus": {
+      "en": [
+        "esophag"
+      ],
+      "fr": [
+        "œsophag",
+        "oesophag"
+      ],
+      "de": [
+        "speiseröhre",
+        "osophag"
+      ],
+      "it": [
+        "esofag"
+      ]
+    }
+  },
+  "findings": [
+    {
+      "id": "aortic_calcification",
+      "organ": "aorta",
+      "label_en": "atherosclerotic calcification of the thoracic aorta",
+      "prevalence": 0.3,
+      "age_min": 60,
+      "sex": "any"
+    },
+    {
+      "id": "aortic_dilation",
+      "organ": "aorta",
+      "label_en": "mild dilatation of the ascending aorta (41 mm), below the surgical threshold",
+      "prevalence": 0.04,
+      "age_min": 65,
+      "sex": "any"
+    },
+    {
+      "id": "pericardial_effusion_small",
+      "organ": "pericardium",
+      "label_en": "small circumferential pericardial effusion, without sign of tamponade",
+      "prevalence": 0.04,
+      "age_min": 0,
+      "sex": "any"
+    },
+    {
+      "id": "aortic_valve_calcification",
+      "organ": "heart",
+      "label_en": "calcification of the aortic valve without significant stenosis",
+      "prevalence": 0.12,
+      "age_min": 65,
+      "sex": "any"
+    },
+    {
+      "id": "mitral_annular_calcification",
+      "organ": "heart",
+      "label_en": "mitral annular calcification",
+      "prevalence": 0.08,
+      "age_min": 65,
+      "sex": "female"
+    },
+    {
+      "id": "lv_hypertrophy_mild",
+      "organ": "heart",
+      "label_en": "mild concentric left ventricular hypertrophy",
+      "prevalence": 0.08,
+      "age_min": 55,
+      "sex": "any"
+    },
+    {
+      "id": "pulmonary_nodule_small",
+      "organ": "lungs",
+      "label_en": "a 4 mm solid pulmonary nodule in the right lower lobe, below the size threshold for specific follow-up",
+      "prevalence": 0.08,
+      "age_min": 50,
+      "sex": "any"
+    },
+    {
+      "id": "dependent_atelectasis",
+      "organ": "lungs",
+      "label_en": "dependent atelectasis of the lung bases",
+      "prevalence": 0.15,
+      "age_min": 0,
+      "sex": "any"
+    },
+    {
+      "id": "emphysema_mild",
+      "organ": "lungs",
+      "label_en": "mild centrilobular emphysema of the upper lobes",
+      "prevalence": 0.08,
+      "age_min": 55,
+      "sex": "any"
+    },
+    {
+      "id": "pleural_thickening_minimal",
+      "organ": "pleura",
+      "label_en": "minimal bilateral apical pleural thickening",
+      "prevalence": 0.05,
+      "age_min": 0,
+      "sex": "any"
+    },
+    {
+      "id": "hiatal_hernia",
+      "organ": "upper_abdomen",
+      "label_en": "small hiatal hernia",
+      "prevalence": 0.07,
+      "age_min": 50,
+      "sex": "any"
+    },
+    {
+      "id": "hepatic_steatosis",
+      "organ": "upper_abdomen",
+      "label_en": "moderate hepatic steatosis (liver dome included in the field of view)",
+      "prevalence": 0.05,
+      "age_min": 0,
+      "sex": "any"
+    },
+    {
+      "id": "gallstones",
+      "organ": "upper_abdomen",
+      "label_en": "gallstones without sign of cholecystitis",
+      "prevalence": 0.05,
+      "age_min": 45,
+      "sex": "any"
+    },
+    {
+      "id": "vertebral_degenerative",
+      "organ": "spine",
+      "label_en": "degenerative changes of the thoracic spine",
+      "prevalence": 0.25,
+      "age_min": 55,
+      "sex": "any"
+    }
+  ]
+}
