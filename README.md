@@ -5,7 +5,7 @@ la recherche sur les LLM. Aucune donnée patient, aucune dépendance externe
 (Python 3.10+ standard library uniquement).
 
 > **Statut** : plomberie, plan, moteur de classification et contrôles testés
-> (65 tests, exécutés en CI). L'appel réel passe par le CLI `opencode` (voir
+> (70 tests, exécutés en CI). L'appel réel passe par le CLI `opencode` (voir
 > « Brancher ton compte opencode ») ; il n'a pas pu être validé dans
 > l'environnement de développement. Seul `backend: http_api` reste un placeholder.
 
@@ -134,7 +134,7 @@ cadrads-generator/            (racine du dépôt)
 │   ├── auth.py            connexion opencode + test d'appel
 │   ├── validate.py        nettoyage et contrôles automatiques
 │   └── store.py           manifeste, reprise, export
-└── tests/                 65 tests, stdlib uniquement
+└── tests/                 70 tests, stdlib uniquement
 ```
 
 Les fichiers de `src/` ne sont pas faits pour être modifiés à la main : tout le
@@ -301,8 +301,14 @@ opencode models --refresh # si un modèle vient d'être ajouté
 
 ### 2. Récupérer l'identifiant exact du modèle
 
-`opencode models` renvoie des lignes `provider/model` (ex. `opencode/grok-code`).
-C'est cette chaîne, et rien d'autre, qu'il faut mettre dans `--model`.
+`opencode models` renvoie des lignes `provider/model`. C'est cette chaîne, et rien
+d'autre, qu'il faut mettre dans `--model`.
+
+> **Piège fréquent** : « OpenCode Console » est un **fournisseur** (le compte), pas
+> un modèle. Le plan gratuit ne donne pas un id de modèle unique : il donne accès à
+> ceux listés par `opencode models`. Un id périmé produit
+> `Error: Model unavailable` — l'option 2 de `login.py` liste les ids réels et peut
+> écrire le bon dans `settings.json`.
 
 ### 3. Écrire la commande
 
@@ -475,6 +481,7 @@ python3 tests/test_incidental.py   # 16 tests  — prévalences, gating, plafond
 python3 tests/test_validate.py     # 16 tests  — nettoyage et contrôles
 python3 tests/test_auth.py         #  8 tests  — état de connexion, chemin d'échec
 python3 tests/test_cli.py          #  7 tests  — flags, exclusivité, export, doc à jour
+python3 tests/test_config.py       #  5 tests  — réécriture du modèle dans settings.json
 ```
 
 Couvrent : seuils de sténose, occlusion, tronc commun, 3 vaisseaux, précédence
@@ -483,7 +490,7 @@ burden, format du label ; prévalences conformes au catalogue, respect de
 `age_min` / `sex`, plafond, exclusion, déterminisme ; nettoyage des préambules et
 blocs de code, tolérance du label, mention des modificateurs et des découvertes.
 
-65 tests, stdlib uniquement. Ils tournent aussi en intégration continue
+70 tests, stdlib uniquement. Ils tournent aussi en intégration continue
 (`.github/workflows/tests.yml`, Python 3.10 à 3.14) : c'est la preuve que le label
 imposé est conforme et que le tirage est reproductible.
 

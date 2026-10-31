@@ -189,6 +189,42 @@ def validate(cfg: dict) -> list[str]:
     return errors
 
 
+def set_llm_model(path: Path, model_id: str, stamp: str | None = None) -> dict:
+    """Reecrit llm.command (valeur de --model) et llm.model_label dans settings.json.
+
+    Ne touche a rien d'autre. Retourne la config rechargee et validee.
+    """
+    import re
+
+    path = Path(path)
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    llm = raw.setdefault("llm", {})
+
+    command = list(llm.get("command") or [])
+    if not command:
+        command = ["opencode", "run", "--model", model_id, "{prompt}"]
+    elif "--model" in command:
+        index = command.index("--model")
+        if index + 1 < len(command):
+            command[index + 1] = model_id
+        else:
+            command.append(model_id)
+    else:
+        # insere juste apres le sous-commande "run" si elle existe
+        anchor = command.index("run") + 1 if "run" in command else 1
+        command[anchor:anchor] = ["--model", model_id]
+
+    if not any("{prompt}" in part for part in command):
+        command.append("{prompt}")
+
+    llm["command"] = command
+    date = stamp or datetime.now().strftime("%Y-%m-%d")
+    llm["model_label"] = f"{model_id}@{date}"
+
+    path.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return load_settings(path)
+
+
 def settings_fingerprint(cfg: dict) -> str:
     """Empreinte stable de la config (sans cles de documentation), pour la tracabilite."""
     canonical = json.dumps(_strip_doc_keys(cfg), sort_keys=True, ensure_ascii=False)

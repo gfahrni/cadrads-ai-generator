@@ -110,6 +110,9 @@ def action_login(cfg: dict) -> None:
     auth.save_state(ROOT, auth.build_state(cfg, result, auth_exit=code))
 
 
+MAX_AFFICHES = 30
+
+
 def action_models(cfg: dict) -> None:
     print()
     code, text = auth.models(cfg)
@@ -121,23 +124,54 @@ def action_models(cfg: dict) -> None:
         for hint in HINTS:
             print(f"  {hint}")
         return
-    lines = [l for l in text.splitlines() if l.strip()]
-    print(f"  {len(lines)} modeles disponibles (format provider/modele). Apercu :")
+
+    toutes = [l.strip() for l in text.splitlines() if l.strip()]
+    if not toutes:
+        print("  Aucun modele disponible : connecte d'abord un fournisseur (option 1).")
+        return
+
+    affichees = toutes[:MAX_AFFICHES]
+    print(f"  {len(toutes)} modeles disponibles (format provider/modele).")
     print(LINE)
-    for line in lines[:30]:
-        print(f"  {line}")
-    if len(lines) > 30:
-        print(f"  ... ({len(lines) - 30} de plus)")
+    for numero, nom in enumerate(affichees, start=1):
+        print(f"  {numero:>2}) {nom}")
+    if len(toutes) > len(affichees):
+        print(f"  ({len(toutes) - len(affichees)} de plus, non affiches —")
+        print("   utilise 'opencode models | grep motif' pour les retrouver)")
+    print(LINE)
 
     wanted = str(cfg["llm"].get("model_label", "")).split("@")[0].strip()
+    if wanted and wanted in toutes:
+        print(f"  OK : le modele de settings.json ({wanted}) est disponible.")
+        return
     if wanted:
-        found = any(wanted == line.strip() for line in lines)
-        print()
-        if found:
-            print(f"  OK : le modele de settings.json ({wanted}) est disponible.")
-        else:
-            print(f"  ATTENTION : '{wanted}' n'apparait pas dans la liste.")
-            print("  -> corrige llm.command et llm.model_label dans settings.json.")
+        print(f"  ATTENTION : '{wanted}' n'apparait pas dans la liste.")
+
+    if not sys.stdin.isatty():
+        print("  -> corrige llm.command et llm.model_label dans settings.json.")
+        return
+
+    choix = input("\n  Numero a adopter (Entree = ne rien changer) > ").strip()
+    if not choix.isdigit() or not (1 <= int(choix) <= len(affichees)):
+        print("  Inchange.")
+        return
+
+    model_id = affichees[int(choix) - 1]
+    if input(f"  Ecrire '{model_id}' dans settings.json ? [O/n] ").strip().lower() \
+            not in ("", "o", "oui", "y", "yes"):
+        print("  Inchange.")
+        return
+
+    try:
+        cfgmod.set_llm_model(ROOT / "settings.json", model_id)
+    except Exception as exc:  # noqa: BLE001 - on ne laisse pas l'utilisateur sur une trace
+        print(f"  ! echec de l'ecriture : {exc}")
+        return
+
+    print(f"  settings.json mis a jour : --model {model_id}")
+    print("  llm.model_label porte desormais la date du jour.")
+    print("  Option 3 pour valider par un appel reel.")
+    return
 
 
 def _report_probe(result: dict) -> None:  # noqa: C901
@@ -148,6 +182,11 @@ def _report_probe(result: dict) -> None:  # noqa: C901
     if not result.get("ok"):
         print(f"  ECHEC du test : {result.get('error')}")
         print(LINE)
+        if "model unavailable" in str(result.get("error", "")).lower():
+            print("  Ce n'est pas un probleme de connexion : ton compte fonctionne, mais")
+            print("  l'identifiant de modele de settings.json n'existe pas chez ce fournisseur.")
+            print("  -> option 2 pour voir les modeles reellement disponibles et en choisir un.")
+            return
         print("  Pistes :")
         print("   - compte ou cle non connecte   -> option 1")
         print("   - modele absent ou mal nomme   -> option 2, puis settings.json")
