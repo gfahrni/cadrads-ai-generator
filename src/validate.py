@@ -107,7 +107,8 @@ def _body_only(text: str) -> str:
 _MODIFIER_KEYWORDS = {
     "S": ("stent",),
     "G": ("graft", "bypass", "pontage", "bypassgraft"),
-    "E": ("anomal", "exception", "fistul", "aberrant", "origine anormale"),
+    "E": ("anomal", "abnormal", "exception", "fistul", "aberrant", "aneurysm",
+          "origine anormale", "anévrisme"),
     "N": ("non-diagnostic", "non diagnostic", "non-diagnostique", "non diagnostique",
           "non-evaluable", "non evaluable", "non eval", "artefact", "artifact",
           "nicht beurteilbar", "non valutabile"),

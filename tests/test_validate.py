@@ -111,6 +111,17 @@ class TestCheck(unittest.TestCase):
         result = validate.check("Findings: x. CAD-RADS 0", case(label="CAD-RADS 0"), CFG)
         self.assertTrue(result["results"]["incidental"]["skipped"])
 
+    def test_modifier_e_matches_common_wording(self):
+        # real reports say "non-atherosclerotic abnormality" or "fusiform aneurysm",
+        # not necessarily "anomaly"
+        for wording in ("a fusiform aneurysm of the proximal RCA",
+                        "this represents a non-atherosclerotic abnormality",
+                        "an anomalous origin of the RCA"):
+            with self.subTest(wording=wording):
+                result = validate.check(f"Findings: {wording}. CAD-RADS 2/P2/E",
+                                        case(label="CAD-RADS 2/P2/E", modifiers=["E"]), CFG)
+                self.assertTrue(result["results"]["modifiers"]["ok"], wording)
+
     def test_forbidden_phrase(self):
         result = validate.check("As an AI I cannot. CAD-RADS 0", case(label="CAD-RADS 0"), CFG)
         self.assertFalse(result["results"]["forbidden"]["ok"])
