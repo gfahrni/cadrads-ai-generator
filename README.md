@@ -5,7 +5,7 @@ research on large language models. No patient data, no external dependency
 (Python 3.10+ standard library only).
 
 > **Status**: plumbing, plan, classification engine and checks are tested
-> (107 tests, run in CI). The real call goes through the `opencode` CLI (see
+> (109 tests, run in CI). The real call goes through the `opencode` CLI (see
 > "Connecting opencode"); it could not be validated in the development
 > environment. Only `backend: http_api` remains a placeholder.
 
@@ -135,7 +135,7 @@ cadrads-generator/            (repository root)
 │   ├── auth.py            opencode connection + call probe
 │   ├── validate.py        cleaning and automatic checks
 │   └── store.py           manifest, resume, export
-└── tests/                 107 tests, stdlib only
+└── tests/                 109 tests, stdlib only
 ```
 
 The files in `src/` are not meant to be edited by hand: all tuning happens through
@@ -496,7 +496,7 @@ python3 tests/test_incidental.py   # 16 tests  — prevalences, gating, cap
 python3 tests/test_validate.py     # 16 tests  — cleaning and checks
 python3 tests/test_auth.py         # 10 tests  — connection state, failure path, fast-fail
 python3 tests/test_cli.py          # 14 tests  — flags, exclusivity, export, picker, reload
-python3 tests/test_config.py       #  6 tests  — rewriting the model in settings.json
+python3 tests/test_config.py       #  8 tests  — model rewrite, indication values
 python3 tests/test_plan_invariants.py  # 26 tests  — "X impossible when Y" over 2000 cases
 ```
 
@@ -506,7 +506,7 @@ label format; prevalences matching the catalogue, `age_min` / `sex` gating, cap,
 exclusion, determinism; preamble and code-block cleaning, label tolerance, mentions
 of modifiers and findings; connection state and its failure path.
 
-107 tests, standard library only. They also run in continuous integration
+109 tests, standard library only. They also run in continuous integration
 (`.github/workflows/tests.yml`, Python 3.10 to 3.14): that is the proof that the
 imposed label follows the rules and that the draw is reproducible.
 

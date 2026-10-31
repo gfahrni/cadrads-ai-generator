@@ -156,8 +156,8 @@ def validate(cfg: dict) -> list[str]:
         errors.append("generation.age_range must be [min, max] with 0 < min < max < 120")
     if gen["sex"] not in ("random", "male", "female"):
         errors.append("generation.sex must be random, male or female")
-    if gen["indication"] not in ("stable", "acute"):
-        errors.append("generation.indication must be stable or acute")
+    if gen["indication"] not in ("stable", "acute", "random"):
+        errors.append("generation.indication must be stable, acute or random")
 
     weights = gen["cadrads_weights"]
     if not isinstance(weights, dict) or not weights:

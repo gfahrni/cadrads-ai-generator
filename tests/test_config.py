@@ -14,11 +14,28 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src import config  # noqa: E402
 
+ROOT = Path(__file__).resolve().parent.parent
+
 
 def _write_settings(directory: Path, llm: dict) -> Path:
     path = directory / "settings.json"
     path.write_text(json.dumps({"llm": llm, "run": {"n_reports": 3}}), encoding="utf-8")
     return path
+
+
+class TestIndication(unittest.TestCase):
+    def _cfg(self, indication):
+        cfg = config.load_settings(ROOT / "settings.json")
+        cfg["generation"]["indication"] = indication
+        return cfg
+
+    def test_random_is_accepted(self):
+        # the planner draws stable/acute per case; the validator must allow it
+        self.assertEqual(config.validate(self._cfg("random")), [])
+
+    def test_unknown_value_is_rejected(self):
+        errors = config.validate(self._cfg("elective"))
+        self.assertTrue(any("indication" in e for e in errors))
 
 
 class TestSetLlmModel(unittest.TestCase):
