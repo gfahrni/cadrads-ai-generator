@@ -26,6 +26,10 @@ class PlanInvariants(unittest.TestCase):
     def setUpClass(cls):
         cfg = json.loads((ROOT / "settings.json").read_text(encoding="utf-8"))
         cfg["run"]["n_reports"] = N_CASES
+        # The invariants must not depend on the local settings: pin the modes so a
+        # user-modified settings.json cannot make the suite pass or fail differently.
+        cfg["generation"]["cadrads_distribution"] = "auto"
+        cfg["generation"]["lesion_mode"] = "multi"
         cls.cfg = cfg
         cls.reference = json.loads((ROOT / "reference" / "cadrads_2_0.json").read_text(encoding="utf-8"))
         cls.catalogue = json.loads((ROOT / "reference" / "incidental_findings.json").read_text(encoding="utf-8"))
@@ -210,6 +214,35 @@ class PlanInvariants(unittest.TestCase):
             expected = N_CASES * weight / total
             got = sum(1 for c in self.cases if c["cadrads"] == category)
             self.assertLessEqual(abs(got - expected), 1, f"{category}: {got} vs {expected:.0f} expected")
+
+    def test_uniform_distribution_gives_equal_shares(self):
+        cfg = json.loads((ROOT / "settings.json").read_text(encoding="utf-8"))
+        categories = list(cfg["generation"]["cadrads_weights"])
+        cfg["run"]["n_reports"] = 100 * len(categories)
+        cfg["generation"]["cadrads_distribution"] = "uniform"
+        cases = planner.build_cases(cfg, self.reference, self.catalogue)
+        counts = {c: sum(1 for x in cases if x["cadrads"] == c) for c in categories}
+        self.assertEqual(set(counts.values()), {100}, f"uniform share broken: {counts}")
+
+    def test_manual_percentages_are_normalised(self):
+        cfg = json.loads((ROOT / "settings.json").read_text(encoding="utf-8"))
+        cfg["run"]["n_reports"] = 1000
+        cfg["generation"]["cadrads_distribution"] = "manual"
+        cfg["generation"]["cadrads_weights"] = {"0": 10, "1": 10, "2": 10, "3": 10,
+                                                "4A": 10, "4B": 10, "5": 40}
+        cases = planner.build_cases(cfg, self.reference, self.catalogue)
+        self.assertEqual(sum(1 for x in cases if x["cadrads"] == "5"), 400)
+        self.assertEqual(sum(1 for x in cases if x["cadrads"] == "0"), 100)
+        self.assertEqual(len(cases), 1000)
+
+    def test_mono_mode_gives_one_lesion_per_patient(self):
+        cfg = json.loads((ROOT / "settings.json").read_text(encoding="utf-8"))
+        cfg["run"]["n_reports"] = 400
+        cfg["generation"]["lesion_mode"] = "mono"
+        cases = planner.build_cases(cfg, self.reference, self.catalogue)
+        for case in cases:
+            expected = 0 if case["cadrads"] == "0" else 1
+            self.assertEqual(len(case["lesions"]), expected, f"{case['case_id']}: {case['cadrads']}")
 
 
 class PromptInvariants(unittest.TestCase):
