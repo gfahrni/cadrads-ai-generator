@@ -92,7 +92,7 @@ def _build_summary(cases, records, run_id, fingerprint, cfg) -> dict:
 
     def check_rate(key):
         considered = [r for r in latest.values() if r.get("status") in ("ok", "excluded")]
-        if key in ("language", "incidental"):
+        if key in ("language", "incidental", "unplanned_incidental"):
             # Cases where the check is not verifiable leave the denominator.
             flag = "undetermined" if key == "language" else "skipped"
             considered = [r for r in considered
@@ -114,7 +114,9 @@ def _build_summary(cases, records, run_id, fingerprint, cfg) -> dict:
         "n_target_mismatch": sum(1 for c in cases if not c["target_ok"]),
         "n_with_incidental": sum(1 for c in cases if c.get("incidental")),
         "per_category": dict(sorted(per_category.items())),
-        "automatic_checks": {k: check_rate(k) for k in ("label", "language", "modifiers", "incidental", "length")},
+        "automatic_checks": {k: check_rate(k) for k in ("label", "language", "modifiers",
+                                                       "incidental", "unplanned_incidental",
+                                                       "length")},
         "note": "'excluded' = rejected by an automatic check (checks.*=fail); "
                 "'error' = technical failure of the LLM call.",
     }
@@ -331,7 +333,7 @@ def main(argv=None) -> int:
 
         consecutive_errors = 0
         text = validate.clean(result.text)
-        chk = validate.check(text, case, cfg)
+        chk = validate.check(text, case, cfg, catalogue)
         status = "ok" if chk["ok"] else "excluded"
 
         if status == "ok":
@@ -378,12 +380,14 @@ def main(argv=None) -> int:
         if not args.quiet:
             words = chk["results"]["length"]["words"]
             label_ok = chk["results"]["label"]["ok"]
+            extras = chk["results"]["unplanned_incidental"]["detected"]
             flag = "ok  " if status == "ok" else "EXCL"
             print(f"[{index:>3}/{len(cases)}] {case['case_id']}  {case['cadrads']:<3} "
                   f"{case['language']}  {case['style']:<10} {flag} "
                   f"label={'ok' if label_ok else 'KO':<2} {words:>4}w "
                   f"{result.latency_s:5.1f}s  {case['label']}"
-                  + (f"  +{len(case['incidental'])}f" if case.get("incidental") else ""))
+                  + (f"  +{len(case['incidental'])}f" if case.get("incidental") else "")
+                  + (f"  [extras:{len(extras)}]" if extras else ""))
 
         if cfg["llm"]["delay_between_calls_s"] > 0 and not args.dry_run:
             time.sleep(float(cfg["llm"]["delay_between_calls_s"]))
@@ -415,6 +419,9 @@ def main(argv=None) -> int:
         print(f"  modifiers shown  : {checks['modifiers']['rate']}")
         print(f"  findings shown   : {checks['incidental']['rate']} "
               f"({checks['incidental']['passed']}/{checks['incidental']['considered']})")
+        unplanned = checks["unplanned_incidental"]
+        print(f"  unplanned extras : {unplanned['considered'] - unplanned['passed']}"
+              f"/{unplanned['considered']} report(s) with a finding the plan did not contain")
         if summary["n_target_mismatch"]:
             print(f"  plan drift       : {summary['n_target_mismatch']} cases (see manifest)")
         print(f"  duration         : {round(time.time() - started, 1)}s")

@@ -47,19 +47,49 @@ def load_templates(prompts_dir: Path) -> dict:
     return templates
 
 
-FINDINGS_WITH_LESIONS = (
-    "Describe the findings vessel by vessel, using the stenosis severity and "
-    "plaque composition given above."
+FINDINGS_LAYOUT_STRUCTURED = """\
+Fill the Findings section in this order, one item per line, and never merge two
+items into the same paragraph:
+1. the coronary arteries, ONE LINE PER ARTERY, in the order left main, LAD, LCX,
+   RCA. Each line starts with the artery name and a colon ("LAD: ...") and gives
+   that artery's plaque and stenosis, or says it is unremarkable. Do not summarise
+   the coronary tree in a single paragraph, and do not merge two arteries into one
+   sentence.
+2. "Coronary calcium (Agatston score): <value>" on its own line, after the arteries.
+   Never move it into the Technique section or into an artery line.
+3. the stent / graft / non-diagnostic segment on its own line, when the case has one.
+4. the other structures of the field of view, in one paragraph, last.
+"""
+
+FINDINGS_LAYOUT_STRUCTURED_NO_LESION = """\
+Fill the Findings section in this order, one item per line:
+1. one sentence stating that there is no coronary plaque and no luminal stenosis in
+   any segment, then "The left main, LAD, LCX and RCA are unremarkable." Do not
+   describe any stenosis.
+2. "Coronary calcium (Agatston score): <value>" on its own line. Never move it into
+   the Technique section.
+3. the other structures of the field of view, in one paragraph, last."""
+
+FINDINGS_LAYOUT_FREE_WITH_LESIONS = (
+    "Describe the findings vessel by vessel in continuous prose, using the stenosis "
+    "severity and plaque composition given above; give the Agatston score in the "
+    "findings, not in the Technique, and describe the other structures last when the "
+    "case has any."
 )
-FINDINGS_WITHOUT_LESIONS = (
-    "State explicitly that there is no coronary plaque and no luminal stenosis, "
-    "and do not describe any stenosis."
+FINDINGS_LAYOUT_FREE_NO_LESION = (
+    "State explicitly that there is no coronary plaque and no luminal stenosis, and do "
+    "not describe any stenosis; give the Agatston score in the findings, not in the "
+    "Technique, and describe the other structures last when the case has any."
 )
 
 
-def _findings_instruction(case: dict) -> str:
-    """The 'vessel by vessel' bullet only makes sense when lesions are listed."""
-    return FINDINGS_WITH_LESIONS if case["lesions"] else FINDINGS_WITHOUT_LESIONS
+def _findings_instruction(case: dict, style: str) -> str:
+    """The Findings skeleton: one labelled line per artery in structured style."""
+    if style == "structured":
+        return (FINDINGS_LAYOUT_STRUCTURED if case["lesions"]
+                else FINDINGS_LAYOUT_STRUCTURED_NO_LESION)
+    return (FINDINGS_LAYOUT_FREE_WITH_LESIONS if case["lesions"]
+            else FINDINGS_LAYOUT_FREE_NO_LESION)
 
 
 def _scenario_block(case: dict, reference: dict) -> str:
@@ -109,8 +139,14 @@ def _other_structures_block(case: dict, cfg: dict) -> str:
         lines.extend(f"- {f['label']}" for f in findings)
         lines.append("")
         if describe_normal:
-            lines.append("Describe the other structures of the field of view as normal.")
-        lines.append("Place them after the coronary findings and before the impression.")
+            # "the other structures" reads as "everything except the coronaries",
+            # which includes the organ carrying the finding: say "remaining".
+            lines.append(
+                "Describe the remaining structures of the field of view as normal, "
+                "apart from the findings listed above."
+            )
+        lines.append("Place them last, after the coronary findings and the Agatston line, "
+                     "before the impression.")
         lines.append("")
         return "\n".join(lines)
 
@@ -147,7 +183,7 @@ def render(templates: dict, case: dict, cfg: dict, reference: dict) -> dict:
         "other_structures_block": _other_structures_block(case, cfg),
         "label": case["label"],
         "technique": case.get("technique", "ECG-gated acquisition, iodinated contrast"),
-        "findings_instruction": _findings_instruction(case),
+        "findings_instruction": _findings_instruction(case, case["style"]),
         "burden_legend": BURDEN_LEGEND,
         "age": str(case["age"]),
         "sex": case["sex"],

@@ -64,6 +64,7 @@ DEFAULTS = {
         "language_match": "warn",
         "modifier_mention": "warn",
         "incidental_mention": "warn",
+        "unplanned_incidental": "warn",
         "min_words": 35,
         "max_words": 800,
         "forbidden_phrases": ["as an ai", "i cannot", "language model", "```"],
@@ -193,7 +194,8 @@ def validate(cfg: dict) -> list[str]:
     if not isinstance(other.get("exclude"), list):
         errors.append("other_structures.exclude must be a list of identifiers")
 
-    for key in ("label_integrity", "language_match", "modifier_mention", "incidental_mention"):
+    for key in ("label_integrity", "language_match", "modifier_mention",
+                "incidental_mention", "unplanned_incidental"):
         if checks[key] not in ENFORCEMENT:
             errors.append(f"checks.{key} must be one of {', '.join(ENFORCEMENT)}")
     if checks["min_words"] >= checks["max_words"]:

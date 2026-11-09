@@ -26,7 +26,8 @@ Rules for the conclusion:
 - Legend: {{burden_legend}}
 
 ## Required content
-- {{findings_instruction}}
+{{findings_instruction}}
+
 - Do not invent lesions, stenoses or findings that are not listed above.
   You may state that a vessel or a structure is unremarkable.
 {{extra_rules}}

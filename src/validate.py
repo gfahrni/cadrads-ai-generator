@@ -8,6 +8,9 @@ Two families of checks, not to be confused:
 - `modifiers`: are the announced modifiers (stent, graft, non-diagnostic segment)
   described in the body of the report? A light semantic check, which catches labels
   pasted without the matching content.
+- `unplanned_incidental`: does the body describe a minor non-coronary abnormality
+  that the plan did NOT contain? The `incidental` check above cannot see those: it
+  is silent by construction when the plan has no finding at all.
 
 Plus the shape checks: language, length, forbidden phrases.
 """
@@ -134,15 +137,101 @@ def _incidental_mention(body: str, findings) -> dict:
     return mentioned
 
 
+# --- minor findings that were NOT planned -----------------------------------
+# `describe_normal` asks the model to write a paragraph on the lungs, pleura,
+# mediastinum, aorta and pericardium. Nothing keeps that paragraph generic: the
+# model can slip in a minor abnormality the plan never contained ("minimal
+# dependent atelectasis"). That is a hallucination, and the `incidental` check
+# above cannot see it: it only looks at the findings that WERE planned, and stays
+# silent when the plan has none.
+#
+# The detection is deliberately shallow, and conservative by design (a false
+# positive here would be noise in every report):
+#
+#   - the body is cut into clauses;
+#   - a clause counts only if it names an organ of the catalogue, in the report
+#     language (organ keywords are data: reference/incidental_findings.json);
+#   - a clause naming an organ that DOES carry a planned finding is left alone: it
+#     is taken to describe that finding;
+#   - a negated clause is left alone ("no pleural effusion", "pericardium
+#     unremarkable", "sans épanchement");
+#   - an abnormality stem must be present ("atelecta", "calcif", "épanchement"...).
+_ABNORMALITY_STEMS = (
+    # en
+    "calcif", "dilat", "ectas", "effusion", "atelecta", "emphysem", "nodul",
+    "hernia", "steatos", "gallstone", "cholelith", "thicken", "degenerat",
+    "hypertroph", "scleros", "consolidat", "fractur", "lymphadenopath", "opacit",
+    "granulom", "atheroscler", "aneurysm", "cyst",
+    # fr
+    "épanchement", "atélectasie", "emphysème", "nodule", "hernie", "stéatose",
+    "calcul", "épaississement", "dégénérat", "hypertrophie", "sclérose",
+    "consolidation", "fracture", "adénopath", "opacité", "granulome",
+    "athérosclér", "anévrism", "kyste",
+    # de
+    "verkalk", "erweiter", "ektas", "erguss", "atelektase", "emphysem", "knoten",
+    "hernie", "steatose", "gallengang", "verdick", "degenerativ", "hypertroph",
+    "skleros", "raumforderung", "fraktur", "zyste", "lymphadenopath",
+    "verschattung", "aneurysma",
+    # it
+    "calcific", "dilatazione", "versamento", "atelectasia", "enfisema", "nodulo",
+    "ernia", "steatosi", "calcol", "ispessimento", "degenerativ", "ipertrofi",
+    "scleros", "consolidamento", "frattura", "linfadenopat", "opacit", "granulom",
+    "ateroscleros", "aneurisma", "cisti",
+)
+
+# A negation anywhere in the clause cancels the finding: reports describe normal
+# organs with "no / unremarkable / normal", and the four languages are mixed here
+# for the same reason as the modifier keywords above.
+_NEGATION = re.compile(
+    r"\b(no|not|without|absence|absent|unremarkable|normal|intact|clear|none|free)\b"
+    r"|\b(pas|sans|aucun|aucune|non|absenc|normale?s?|normaux|intact|libre|respecté)\b"
+    r"|\b(kein|keine|ohne|nicht|unauffällig|regelrecht|intakt)\b"
+    r"|\b(nessun|nessuna|senza|assenza|normale|indenne|libero)\b"
+)
+
+_CLAUSE_SPLIT = re.compile(r"[.;:\n•·–—]+")
+
+
+def _unplanned_findings(text: str, case: dict, catalogue: dict | None) -> list:
+    """Minor findings described in the body although the plan contains none.
+
+    Returns [{"organs": [...], "excerpt": "..."}], one entry per suspicious clause.
+    Empty when the catalogue is not supplied (nothing to match the organs against):
+    the caller then reports the check as skipped.
+    """
+    if not catalogue:
+        return []
+
+    language = case.get("language") or "en"
+    organs = catalogue.get("organs", {})
+    planned = {f.get("organ") for f in case.get("incidental") or []}
+
+    found = []
+    for clause in _CLAUSE_SPLIT.split(_body_only(text)):
+        lowered = clause.lower()
+        mentioned = [organ for organ, table in organs.items()
+                     if any(k in lowered for k in table.get(language, []))]
+        if not mentioned:
+            continue
+        if any(organ in planned for organ in mentioned):
+            continue  # taken to describe a planned finding
+        if _NEGATION.search(lowered):
+            continue  # "no pleural effusion", "péricarde normal"
+        if not any(stem in lowered for stem in _ABNORMALITY_STEMS):
+            continue
+        found.append({"organs": mentioned, "excerpt": clause.strip()[:160]})
+    return found
+
+
 # --- main check ------------------------------------------------------------
 
-def check(text: str, case: dict, cfg: dict) -> dict:
+def check(text: str, case: dict, cfg: dict, catalogue: dict | None = None) -> dict:
     checks_cfg = cfg["checks"]
     words = len(text.split())
 
     def status(key, ok):
         """Turn a boolean plus the checks.* policy into a symbolic status."""
-        mode = checks_cfg[key]
+        mode = checks_cfg.get(key, "warn")
         if mode == "off" or ok:
             return "ok" if ok else "off"
         return mode  # "fail" or "warn"
@@ -179,6 +268,9 @@ def check(text: str, case: dict, cfg: dict) -> dict:
     lowered = text.lower()
     hits = [p for p in checks_cfg["forbidden_phrases"] if p.lower() in lowered]
 
+    extras = _unplanned_findings(text, case, catalogue)
+    extras_skipped = catalogue is None
+
     length_ok = checks_cfg["min_words"] <= words <= checks_cfg["max_words"]
 
     results = {
@@ -207,6 +299,12 @@ def check(text: str, case: dict, cfg: dict) -> dict:
             "ok": incidental_ok,
             "status": incidental_status,
             "skipped": incidental_skipped,
+        },
+        "unplanned_incidental": {
+            "detected": extras,
+            "ok": not extras,
+            "status": "off" if extras_skipped else status("unplanned_incidental", not extras),
+            "skipped": extras_skipped,
         },
         "length": {"words": words, "ok": length_ok, "status": "ok" if length_ok else "warn"},
         "forbidden": {"hits": hits, "ok": not hits, "status": "ok" if not hits else "warn"},

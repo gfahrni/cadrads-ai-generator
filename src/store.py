@@ -26,6 +26,12 @@ def _grade_of(case: dict, slot: int) -> str:
     return ""
 
 
+def _unplanned_organs(checks: dict) -> str:
+    """Organs of the minor findings described but not planned (empty = clean)."""
+    extras = checks.get("unplanned_incidental", {}).get("detected") or []
+    return "|".join(sorted({organ for extra in extras for organ in extra.get("organs", [])}))
+
+
 def _safe(name: str) -> str:
     return _UNSAFE.sub("-", name).strip("-") or "case"
 
@@ -188,7 +194,7 @@ class RunStore:
         "agatston", "age", "sex", "indication", "language", "style", "technique",
         "stent_site", "graft_site", "vulnerable_site", "exception_site", "non_evaluable",
         "incidental", "words", "label_ok", "modifiers_ok", "incidental_ok",
-        "attempts", "latency_s", "model", "prompt_sha",
+        "attempts", "latency_s", "model", "prompt_sha", "unplanned_incidental",
     ]
 
     def write_dataset_descriptor(self, cases, records):
@@ -238,6 +244,7 @@ class RunStore:
                 record.get("meta", {}).get("latency_s", ""),
                 record.get("meta", {}).get("model", ""),
                 record.get("meta", {}).get("prompt_sha", ""),
+                _unplanned_organs(checks),
             ]
             rows.append(row)
 
@@ -265,7 +272,7 @@ class RunStore:
                 "case_id", "status", "cadrads", "label_expected", "label_ok",
                 "language", "language_ok", "style", "age", "sex", "modifiers",
                 "modifiers_ok", "incidental", "incidental_ok", "words",
-                "attempts", "latency_s", "file",
+                "attempts", "latency_s", "file", "unplanned_incidental",
             ])
             for cid in sorted(latest):
                 rec = latest[cid]
@@ -289,4 +296,5 @@ class RunStore:
                     rec.get("meta", {}).get("attempts", ""),
                     round(rec.get("meta", {}).get("latency_s", 0.0), 2),
                     rec.get("file", ""),
+                    _unplanned_organs(checks),
                 ])

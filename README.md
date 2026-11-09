@@ -5,7 +5,7 @@ research on large language models. No patient data, no external dependency
 (Python 3.10+ standard library only).
 
 > **Status**: plumbing, plan, classification engine and checks are tested
-> (147 tests, run in CI). The real call goes through the `opencode` CLI (see
+> (157 tests, run in CI). The real call goes through the `opencode` CLI (see
 > "Connecting opencode"); it could not be validated in the development
 > environment. Only `backend: http_api` remains a placeholder.
 
@@ -136,7 +136,7 @@ cadrads-generator/            (repository root)
 │   ├── auth.py            opencode connection + call probe
 │   ├── validate.py        cleaning and automatic checks
 │   └── store.py           manifest, resume, export
-└── tests/                 147 tests, stdlib only
+└── tests/                 157 tests, stdlib only
 ```
 
 The files in `src/` are not meant to be edited by hand: all tuning happens through
@@ -170,7 +170,7 @@ the program with a message listing the allowed values.
 | `other_structures` | `describe_normal` | `false` | describe the organs of the field of view |
 | `other_structures` | `include_incidental` | `false` | add minor incidental findings |
 | `other_structures` | `prevalence_scale` / `max_per_case` | `1.0` / `3` | dosing and cap of the findings |
-| `checks` | `label_integrity` / `modifier_mention` / `incidental_mention` | `fail` / `warn` / `warn` | `fail` excludes, `warn` flags, `off` ignores |
+| `checks` | `label_integrity` / `modifier_mention` / `incidental_mention` / `unplanned_incidental` | `fail` / `warn` / `warn` / `warn` | `fail` excludes, `warn` flags, `off` ignores |
 | `checks` | `min_words` / `max_words` | `35` / `800` | accepted length |
 | `export` | `filename` | `"{case_id}_{cadrads}_{lang}"` | name of the `.txt` files |
 | `export` | `write_xlsx` | `true` | write `dataset.xlsx`, one row per report |
@@ -233,6 +233,18 @@ other_structures`:
 
 These are genuinely two different things: describing healthy organs (a complete
 report) is not the same as adding incidental findings.
+
+`include_incidental` is a **per-finding Bernoulli draw** (`prevalence ×
+prevalence_scale`, filtered by `age_min` / `sex`, capped by `max_per_case`), not a
+quota: at scale 1.0, roughly a third of the corpus carries **no** minor finding.
+That is the intended behaviour — a cohort where every patient has an incidentaloma
+would be as unrealistic as one where nobody does.
+
+Because `describe_normal` asks for a paragraph on the lungs, pleura, mediastinum,
+aorta and pericardium, the model can slip in a minor abnormality the plan never
+contained ("minimal dependent atelectasis"). `checks.unplanned_incidental` flags
+those: it is the only check that looks at findings **not** drawn by the planner,
+and it is reported per report in `summary.json` and `dataset.xlsx`.
 
 ### Choosing the distribution of categories
 
@@ -468,16 +480,34 @@ With `--dry-run`, the `run_id` is suffixed `-dryrun` and the manifest carries
 Each `.txt` is a complete report, ending with the imposed label:
 
 ```
-Indication: evaluation of coronary artery disease in a 67-year-old patient.
-Technique: ECG-gated coronary CT angiography, 0.5 mm slices.
-Findings: non-calcified plaque of the proximal LAD with 82% luminal stenosis,
-and a patent stent in the mid RCA.
-Impression: severe stenosis of the proximal LAD.
-CAD-RADS 4A/P2/S
+Indication
+Stable chest pain, evaluation for coronary artery disease.
+
+Technique
+Prospective ECG-triggered coronary CT angiography, 0.5 mm slices, iodinated contrast.
+
+Findings
+Left main: unremarkable.
+LAD: calcified plaque in the proximal segment causing 54% luminal stenosis.
+LCX: unremarkable.
+RCA: unremarkable.
+Coronary calcium (Agatston score): 312.
+The lungs, pleura, mediastinum, thoracic aorta and pericardium are unremarkable.
+
+Impression
+Moderate stenosis of the proximal LAD, with a moderate overall plaque burden.
+
+CAD-RADS 3/P2
 ```
 
-*Shape example: the exact wording depends on the model and on the requested style
-(free or structured).*
+In `structured` style the Findings section follows a **fixed skeleton**: one labelled
+line per artery (left main, LAD, LCX, RCA — each artery named, even when
+unremarkable), then the Agatston score on its own line, then the stent / graft /
+non-diagnostic segment when the case has one, and the other structures last. This
+matters because the CAD-RADS label is per-patient: a single running paragraph hides
+which artery carries which grade.
+
+*Shape example: the exact wording depends on the model.*
 
 ### What a manifest line looks like
 
@@ -525,6 +555,7 @@ refuses (exit 2) instead of producing a misleading snapshot.
 | `label` | the computed label is present, verbatim | `checks.label_integrity` |
 | `modifiers` | are the stent / graft / non-diagnostic segment **described in the body** (not just in the label) | `checks.modifier_mention` |
 | `incidental` | is each incidental finding mentioned in the body (match by organ) | `checks.incidental_mention` |
+| `unplanned_incidental` | does the body describe a minor non-coronary abnormality that the plan does **not** contain (hallucination) | `checks.unplanned_incidental` |
 | `language` | detected language == requested language | `checks.language_match` |
 | `length` | word count within the range | `checks.min_words` / `max_words` |
 | `forbidden` | no "as an AI", no code block, no "language model" | `checks.forbidden_phrases` |
@@ -563,11 +594,11 @@ to the generation order that reintroduces a contradiction fails the build.
 ```bash
 python3 tests/test_classify.py     # 21 tests  — CAD-RADS rules
 python3 tests/test_incidental.py   # 16 tests  — prevalences, gating, cap
-python3 tests/test_validate.py     # 16 tests  — cleaning and checks
+python3 tests/test_validate.py     # 26 tests  — cleaning and checks
 python3 tests/test_auth.py         # 10 tests  — connection state, failure path, fast-fail
 python3 tests/test_cli.py          # 14 tests  — flags, exclusivity, export, picker, reload
-python3 tests/test_config.py       #  8 tests  — model rewrite, indication values
-python3 tests/test_plan_invariants.py  # 43 tests  — "X impossible when Y" over 2000 cases
+python3 tests/test_config.py       #  9 tests  — model rewrite, indication values
+python3 tests/test_plan_invariants.py  # 42 tests  — "X impossible when Y" over 2000 cases
 python3 tests/test_scenarios.py    # 13 tests  — per-category trees, mono/multi, distinct arteries
 python3 tests/test_xlsx.py         #  6 tests  — xlsx writer and dataset descriptor
 ```
@@ -578,7 +609,7 @@ label format; prevalences matching the catalogue, `age_min` / `sex` gating, cap,
 exclusion, determinism; preamble and code-block cleaning, label tolerance, mentions
 of modifiers and findings; connection state and its failure path.
 
-147 tests, standard library only. They also run in continuous integration
+157 tests, standard library only. They also run in continuous integration
 (`.github/workflows/tests.yml`, Python 3.10 to 3.14): that is the proof that the
 imposed label follows the rules and that the draw is reproducible.
 

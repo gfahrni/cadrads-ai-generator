@@ -104,5 +104,14 @@ class TestSetLlmModel(unittest.TestCase):
             self.assertEqual(config.validate(cfg), [])
 
 
+class TestChecksPolicies(unittest.TestCase):
+    def test_unplanned_incidental_policy_is_validated(self):
+        cfg = config.load_settings(ROOT / "settings.json")
+        self.assertIn("unplanned_incidental", cfg["checks"])
+        cfg["checks"]["unplanned_incidental"] = "sometimes"
+        errors = config.validate(cfg)
+        self.assertTrue(any("unplanned_incidental" in e for e in errors), errors)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

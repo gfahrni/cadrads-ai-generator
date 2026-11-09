@@ -68,11 +68,12 @@
     "exclude": []
   },
   "checks": {
-    "_doc": "Automatic checks. label_integrity: does the report contain the computed label (integrity, not accuracy). modifier_mention: are the stent / graft / non-diagnostic segment described in the body. 'fail' = report excluded, 'warn' = kept with a flag.",
+    "_doc": "Automatic checks. label_integrity: does the report contain the computed label (integrity, not accuracy). modifier_mention: are the stent / graft / non-diagnostic segment described in the body. incidental_mention: are the drawn minor findings described. unplanned_incidental: does the report describe a minor non-coronary abnormality that was NOT drawn (hallucination). 'fail' = report excluded, 'warn' = kept with a flag.",
     "label_integrity": "fail",
     "language_match": "warn",
     "modifier_mention": "warn",
     "incidental_mention": "warn",
+    "unplanned_incidental": "warn",
     "min_words": 35,
     "max_words": 800,
     "forbidden_phrases": [
