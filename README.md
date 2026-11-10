@@ -662,19 +662,21 @@ imposed label follows the rules and that the draw is reproducible.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). The text includes a medical disclaimer: this software
-produces synthetic reports for research, not medical reports.
+MIT — see [LICENSE](LICENSE).
 
 If your institution requires Apache-2.0 or another license, simply replace the
 `LICENSE` file and the `license` field of `CITATION.cff`.
 
+## Medical disclaimer
+
+This software produces **synthetic** reports for research on language models. It does
+not produce a medical report and must not be used for patient care, diagnosis or
+clinical decision-making. The reports it generates contain no patient data.
+
 ## Citing this work
 
 `CITATION.cff` provides the metadata (GitHub then shows a "Cite this repository"
-button). Two fields must be corrected before publication:
-
-- `repository-code`: the real repository URL;
-- `date-released`.
+button). Every tagged release is archived on Zenodo, which mints the DOI to cite.
 
 Once the article is published, add the reference to the `preferred-citation` section.
 

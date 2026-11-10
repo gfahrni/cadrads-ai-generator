@@ -11,9 +11,10 @@ abstract: >-
 authors:
   - family-names: "Fahrni"
     given-names: "Guillaume"
-date-released: "2026-10-31"
+version: "0.1.0"
+date-released: "2026-11-10"
 license: MIT
-repository-code: "https://github.com/guillaumefahrni/cadrads-generator"
+repository-code: "https://github.com/gfahrni/cadrads-ai-generator"
 keywords:
   - CAD-RADS
   - coronary CT angiography
