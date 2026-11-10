@@ -1,5 +1,7 @@
 # CAD-RADS report generator
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24102590.svg)](https://doi.org/10.5281/zenodo.24102590)
+
 Generates **parameterizable** synthetic coronary CT angiography (CCTA) reports for
 research on large language models. No patient data, no external dependency
 (Python 3.10+ standard library only).
